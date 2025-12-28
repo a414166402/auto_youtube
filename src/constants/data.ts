@@ -55,6 +55,27 @@ export const navItems: NavItem[] = [
     ]
   },
   {
+    title: 'YouTube',
+    url: '/dashboard/youtube',
+    icon: 'youtube',
+    shortcut: ['y', 't'],
+    isActive: true,
+    items: [
+      {
+        title: 'Projects',
+        url: '/dashboard/youtube/projects',
+        icon: 'list',
+        shortcut: ['y', 'p']
+      },
+      {
+        title: 'Settings',
+        url: '/dashboard/youtube/settings',
+        icon: 'settings',
+        shortcut: ['y', 's']
+      }
+    ]
+  },
+  {
     title: 'Product',
     url: '/dashboard/product',
     icon: 'product',
