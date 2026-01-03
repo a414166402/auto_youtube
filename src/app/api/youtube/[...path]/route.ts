@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const YOUTUBE_API_BASE_URL =
-  process.env.YOUTUBE_API_BASE_URL || 'http://localhost:8000/api/youtube';
+  process.env.YOUTUBE_API_BASE_URL || 'http://50.114.206.152:8000/api/youtube';
 const API_TIMEOUT = 30000; // 30 seconds
 const LONG_RUNNING_TIMEOUT = 120000; // 2 minutes for long-running operations
 

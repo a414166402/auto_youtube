@@ -5,7 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { Prompt, GeneratedImage, GeneratedVideo } from '@/types/youtube';
+import type {
+  Storyboard,
+  GeneratedImage,
+  GeneratedVideo
+} from '@/types/youtube';
 import { VideoSelector } from '@/components/youtube/video-selector';
 
 export type VideoGenerationStatus =
@@ -15,17 +19,13 @@ export type VideoGenerationStatus =
   | 'has_videos';
 
 export interface VideoGenerationCardProps {
-  /** The prompt data (微创新分镜) */
-  prompt: Prompt;
-  /** The source image for video generation */
-  sourceImage: GeneratedImage | null;
-  /** Array of generated videos for this prompt */
-  videos: GeneratedVideo[];
+  /** The storyboard data (微创新分镜) */
+  storyboard: Storyboard;
   /** Current status of the video generation */
   status: VideoGenerationStatus;
-  /** Callback when a video is selected/deselected */
-  onSelectVideo: (videoId: string, isSelected: boolean) => Promise<void>;
-  /** Callback to regenerate videos for this prompt */
+  /** Callback when a video is selected */
+  onSelectVideo: (videoIndex: number) => Promise<void>;
+  /** Callback to regenerate videos for this storyboard */
   onRegenerate: () => void;
   /** Callback when video play is requested */
   onPlayVideo?: (video: GeneratedVideo) => void;
@@ -51,10 +51,14 @@ function getStatusBadge(status: VideoGenerationStatus): {
   }
 }
 
+// Get selected image from storyboard
+function getSelectedImage(storyboard: Storyboard): GeneratedImage | null {
+  if (storyboard.selected_image_index === null) return null;
+  return storyboard.images[storyboard.selected_image_index] || null;
+}
+
 export function VideoGenerationCard({
-  prompt,
-  sourceImage,
-  videos,
+  storyboard,
   status,
   onSelectVideo,
   onRegenerate,
@@ -62,16 +66,18 @@ export function VideoGenerationCard({
   isGenerating = false
 }: VideoGenerationCardProps) {
   const statusBadge = getStatusBadge(status);
+  const videos = storyboard.videos;
   const hasVideos = videos.length > 0;
+  const sourceImage = getSelectedImage(storyboard);
   const hasCharacterRefs =
-    prompt.character_refs && prompt.character_refs.length > 0;
+    storyboard.character_refs && storyboard.character_refs.length > 0;
 
   return (
     <Card className='overflow-hidden'>
       <CardHeader className='pb-3'>
         <div className='flex items-center justify-between'>
           <CardTitle className='flex items-center gap-2 text-base'>
-            微创新分镜 #{prompt.storyboard_index}
+            微创新分镜 #{storyboard.index}
           </CardTitle>
           <Badge variant={statusBadge.variant} className='gap-1'>
             {status === 'selected' && <Check className='h-3 w-3' />}
@@ -86,7 +92,7 @@ export function VideoGenerationCard({
           <div className='text-muted-foreground flex items-center gap-2 text-sm'>
             <span>角色引用:</span>
             <div className='flex gap-1'>
-              {prompt.character_refs!.map((ref) => (
+              {storyboard.character_refs!.map((ref) => (
                 <Badge key={ref} variant='outline' className='gap-1 text-xs'>
                   <User className='h-2.5 w-2.5' />
                   {ref}
@@ -105,8 +111,8 @@ export function VideoGenerationCard({
             <div className='bg-muted relative aspect-video overflow-hidden rounded-md'>
               {sourceImage ? (
                 <img
-                  src={sourceImage.image_url}
-                  alt={`分镜 ${prompt.storyboard_index} 源图片`}
+                  src={sourceImage.url}
+                  alt={`分镜 ${storyboard.index} 源图片`}
                   className='h-full w-full object-cover'
                 />
               ) : (
@@ -126,32 +132,32 @@ export function VideoGenerationCard({
               <p className='text-muted-foreground text-xs'>
                 生成的视频 ({videos.length})
               </p>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={onRegenerate}
-                disabled={isGenerating || !sourceImage}
-                className='h-7 gap-1 text-xs'
-              >
-                {status === 'generating' ? (
-                  <Loader2 className='h-3 w-3 animate-spin' />
-                ) : (
-                  <Plus className='h-3 w-3' />
-                )}
-                重新生成
-              </Button>
+              {hasVideos && (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={onRegenerate}
+                  disabled={isGenerating || !sourceImage}
+                  className='h-7 gap-1 text-xs'
+                >
+                  {status === 'generating' ? (
+                    <Loader2 className='h-3 w-3 animate-spin' />
+                  ) : (
+                    <RefreshCw className='h-3 w-3' />
+                  )}
+                  重新生成
+                </Button>
+              )}
             </div>
 
             {hasVideos ? (
               <div className='grid grid-cols-3 gap-2'>
-                {videos.map((video) => (
+                {videos.map((video, index) => (
                   <VideoSelector
-                    key={video.id}
+                    key={index}
                     video={video}
-                    isSelected={video.is_selected}
-                    onSelect={(isSelected: boolean) =>
-                      onSelectVideo(video.id, isSelected)
-                    }
+                    isSelected={storyboard.selected_video_index === index}
+                    onSelect={async () => onSelectVideo(index)}
                     onPlay={onPlayVideo ? () => onPlayVideo(video) : undefined}
                   />
                 ))}
@@ -184,8 +190,8 @@ export function VideoGenerationCard({
                     disabled={isGenerating}
                     className='gap-1'
                   >
-                    <RefreshCw className='h-4 w-4' />
-                    开始生成
+                    <Plus className='h-4 w-4' />
+                    生成视频
                   </Button>
                 )}
               </div>
@@ -196,7 +202,7 @@ export function VideoGenerationCard({
         {/* 图生视频提示词预览 */}
         <div className='text-muted-foreground bg-muted/50 rounded-md p-2 text-sm'>
           <p className='mb-1 text-xs font-medium'>图生视频提示词:</p>
-          <p className='line-clamp-2'>{prompt.image_to_video || '暂无'}</p>
+          <p className='line-clamp-2'>{storyboard.image_to_video || '暂无'}</p>
         </div>
       </CardContent>
     </Card>

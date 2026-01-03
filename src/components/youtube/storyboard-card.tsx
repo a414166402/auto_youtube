@@ -6,12 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import type { Storyboard } from '@/types/youtube';
+import type { SourceStoryboard } from '@/types/youtube';
 
 export interface StoryboardCardProps {
-  storyboard: Storyboard;
+  storyboard: SourceStoryboard;
   onSaveDescription: (id: string, description: string) => Promise<void>;
-  onAdjustTime: (storyboard: Storyboard) => void;
+  onAdjustTime: (storyboard: SourceStoryboard) => void;
 }
 
 // 格式化时间为 MM:SS 格式

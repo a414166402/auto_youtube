@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { Prompt, GeneratedImage } from '@/types/youtube';
+import type { Storyboard, GeneratedImage } from '@/types/youtube';
 import { ImageSelector } from '@/components/youtube/image-selector';
 
 export type StoryboardGenerationStatus =
@@ -15,15 +15,13 @@ export type StoryboardGenerationStatus =
   | 'has_images';
 
 export interface ImageGenerationCardProps {
-  /** The prompt data (微创新分镜) */
-  prompt: Prompt;
-  /** Array of generated images for this prompt */
-  images: GeneratedImage[];
+  /** The storyboard data (微创新分镜) */
+  storyboard: Storyboard;
   /** Current status of the generation */
   status: StoryboardGenerationStatus;
-  /** Callback when an image is selected/deselected */
-  onSelectImage: (imageId: string, isSelected: boolean) => Promise<void>;
-  /** Callback to regenerate images for this prompt */
+  /** Callback when an image is selected */
+  onSelectImage: (imageIndex: number) => Promise<void>;
+  /** Callback to regenerate images for this storyboard */
   onRegenerate: () => void;
   /** Whether generation is currently in progress globally */
   isGenerating?: boolean;
@@ -48,15 +46,15 @@ function getStatusBadge(status: StoryboardGenerationStatus): {
 }
 
 // Get generation type display
-function getGenerationTypeDisplay(prompt: Prompt): {
+function getGenerationTypeDisplay(storyboard: Storyboard): {
   text: string;
   hasCharacterRefs: boolean;
 } {
   const hasCharacterRefs =
-    prompt.character_refs && prompt.character_refs.length > 0;
+    storyboard.character_refs && storyboard.character_refs.length > 0;
   if (hasCharacterRefs) {
     return {
-      text: `图文生图 (角色: ${prompt.character_refs!.join(', ')})`,
+      text: `图文生图 (角色: ${storyboard.character_refs!.join(', ')})`,
       hasCharacterRefs: true
     };
   }
@@ -67,23 +65,23 @@ function getGenerationTypeDisplay(prompt: Prompt): {
 }
 
 export function ImageGenerationCard({
-  prompt,
-  images,
+  storyboard,
   status,
   onSelectImage,
   onRegenerate,
   isGenerating = false
 }: ImageGenerationCardProps) {
   const statusBadge = getStatusBadge(status);
+  const images = storyboard.images;
   const hasImages = images.length > 0;
-  const generationType = getGenerationTypeDisplay(prompt);
+  const generationType = getGenerationTypeDisplay(storyboard);
 
   return (
     <Card className='overflow-hidden'>
       <CardHeader className='pb-3'>
         <div className='flex items-center justify-between'>
           <CardTitle className='flex items-center gap-2 text-base'>
-            微创新分镜 #{prompt.storyboard_index}
+            微创新分镜 #{storyboard.index}
           </CardTitle>
           <Badge variant={statusBadge.variant} className='gap-1'>
             {status === 'selected' && <Check className='h-3 w-3' />}
@@ -105,7 +103,7 @@ export function ImageGenerationCard({
           </span>
           {generationType.hasCharacterRefs && (
             <div className='flex gap-1'>
-              {prompt.character_refs!.map((ref) => (
+              {storyboard.character_refs!.map((ref) => (
                 <Badge key={ref} variant='outline' className='gap-1 text-xs'>
                   <User className='h-2.5 w-2.5' />
                   {ref}
@@ -140,14 +138,12 @@ export function ImageGenerationCard({
 
           {hasImages ? (
             <div className='grid grid-cols-4 gap-2'>
-              {images.map((image) => (
+              {images.map((image, index) => (
                 <ImageSelector
-                  key={image.id}
+                  key={index}
                   image={image}
-                  isSelected={image.is_selected}
-                  onSelect={(isSelected: boolean) =>
-                    onSelectImage(image.id, isSelected)
-                  }
+                  isSelected={storyboard.selected_image_index === index}
+                  onSelect={async () => onSelectImage(index)}
                 />
               ))}
             </div>
@@ -184,7 +180,7 @@ export function ImageGenerationCard({
         {/* 提示词预览 */}
         <div className='text-muted-foreground bg-muted/50 rounded-md p-2 text-sm'>
           <p className='mb-1 text-xs font-medium'>文生图提示词:</p>
-          <p className='line-clamp-2'>{prompt.text_to_image || '暂无'}</p>
+          <p className='line-clamp-2'>{storyboard.text_to_image || '暂无'}</p>
         </div>
       </CardContent>
     </Card>

@@ -1,7 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, Sparkles, User, X } from 'lucide-react';
+import {
+  Loader2,
+  Sparkles,
+  User,
+  X,
+  AlertCircle,
+  Settings
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -16,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -23,15 +31,28 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import type {
-  Prompt,
-  CharacterMapping,
-  RegeneratePromptRequest
-} from '@/types/youtube';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from '@/components/ui/collapsible';
+import {
+  loadGlobalCharactersAsync,
+  loadProjectMapping,
+  saveProjectMapping,
+  updateProjectMapping,
+  getConfiguredCharactersForProject,
+  PROMPT_IDENTIFIERS,
+  DEFAULT_GLOBAL_CHARACTERS,
+  type GlobalCharacter,
+  type ProjectCharacterMapping,
+  type PromptIdentifier
+} from '@/lib/character-config';
+import type { Prompt, RegeneratePromptRequest } from '@/types/youtube';
 
 export interface PromptEditDialogProps {
   prompt: Prompt | null;
-  characterMappings?: CharacterMapping[]; // 可用的角色映射列表
+  projectId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (
@@ -45,7 +66,7 @@ export interface PromptEditDialogProps {
 
 export function PromptEditDialog({
   prompt,
-  characterMappings = [],
+  projectId,
   open,
   onOpenChange,
   onSave,
@@ -62,6 +83,23 @@ export function PromptEditDialog({
   >('both');
   const [isSaving, setIsSaving] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isMappingOpen, setIsMappingOpen] = useState(false);
+
+  // 全局角色库和项目级映射
+  const [globalCharacters, setGlobalCharacters] = useState<GlobalCharacter[]>(
+    DEFAULT_GLOBAL_CHARACTERS
+  );
+  const [projectMapping, setProjectMapping] = useState<ProjectCharacterMapping>(
+    {}
+  );
+
+  // 加载配置
+  useEffect(() => {
+    if (open && projectId) {
+      loadGlobalCharactersAsync().then(setGlobalCharacters);
+      setProjectMapping(loadProjectMapping(projectId));
+    }
+  }, [open, projectId]);
 
   // 当提示词数据变化时，更新输入框
   useEffect(() => {
@@ -72,6 +110,12 @@ export function PromptEditDialog({
       setInstruction('');
     }
   }, [prompt]);
+
+  // 获取已配置的角色列表（有映射且有图片）
+  const configuredCharacters = getConfiguredCharactersForProject(
+    projectMapping,
+    globalCharacters
+  );
 
   // 切换角色引用选择
   const toggleCharacterRef = (identifier: string) => {
@@ -87,16 +131,25 @@ export function PromptEditDialog({
     });
   };
 
-  // 获取角色显示名称
-  const getCharacterDisplayName = (identifier: string): string => {
-    const mapping = characterMappings.find((m) => m.identifier === identifier);
-    return mapping?.name ? `${identifier}: ${mapping.name}` : identifier;
+  // 更新项目级映射
+  const handleMappingChange = (
+    identifier: PromptIdentifier,
+    globalCharacterId: number | null
+  ) => {
+    const newMapping = updateProjectMapping(
+      projectMapping,
+      identifier,
+      globalCharacterId
+    );
+    setProjectMapping(newMapping);
+    saveProjectMapping(projectId, newMapping);
   };
 
-  // 检查角色是否有参考图
-  const hasReferenceImage = (identifier: string): boolean => {
-    const mapping = characterMappings.find((m) => m.identifier === identifier);
-    return !!mapping?.reference_image_url;
+  // 获取角色配置
+  const getCharacterConfig = (identifier: string): GlobalCharacter | null => {
+    const globalId = projectMapping[identifier];
+    if (!globalId) return null;
+    return globalCharacters.find((c) => c.id === globalId) || null;
   };
 
   const handleSave = async () => {
@@ -128,14 +181,12 @@ export function PromptEditDialog({
 
   const isLoading = isSaving || isRegenerating;
 
-  // 过滤出有参考图的角色
-  const availableCharacters = characterMappings.filter(
-    (m) => m.reference_image_url
-  );
+  // 获取有图片的全局角色
+  const availableGlobalCharacters = globalCharacters.filter((c) => c.imageData);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-[600px]'>
+      <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-[650px]'>
         <DialogHeader>
           <DialogTitle>编辑提示词</DialogTitle>
           <DialogDescription>
@@ -172,27 +223,113 @@ export function PromptEditDialog({
 
           <Separator className='my-2' />
 
+          {/* 角色映射配置（可折叠） */}
+          <Collapsible open={isMappingOpen} onOpenChange={setIsMappingOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant='outline' className='w-full justify-between'>
+                <span className='flex items-center gap-2'>
+                  <Settings className='h-4 w-4' />
+                  项目角色映射配置
+                </span>
+                <span className='text-muted-foreground text-xs'>
+                  {configuredCharacters.length} 个已配置
+                </span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className='mt-3 space-y-3'>
+              {availableGlobalCharacters.length === 0 ? (
+                <Alert>
+                  <AlertCircle className='h-4 w-4' />
+                  <AlertDescription>
+                    暂无可用角色，请先在 Settings 页面上传角色参考图
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className='space-y-2'>
+                  <p className='text-muted-foreground text-xs'>
+                    配置提示词中的角色A/B/C对应哪个全局角色
+                  </p>
+                  {PROMPT_IDENTIFIERS.map((identifier) => (
+                    <div key={identifier} className='flex items-center gap-3'>
+                      <div className='bg-primary text-primary-foreground flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold'>
+                        {identifier}
+                      </div>
+                      <Select
+                        value={projectMapping[identifier]?.toString() || 'none'}
+                        onValueChange={(value) =>
+                          handleMappingChange(
+                            identifier,
+                            value === 'none' ? null : parseInt(value, 10)
+                          )
+                        }
+                      >
+                        <SelectTrigger className='flex-1'>
+                          <SelectValue placeholder='选择对应角色' />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='none'>未映射</SelectItem>
+                          {availableGlobalCharacters.map((char) => (
+                            <SelectItem
+                              key={char.id}
+                              value={char.id.toString()}
+                            >
+                              <div className='flex items-center gap-2'>
+                                <img
+                                  src={char.imageData}
+                                  alt={`角色 ${char.id}`}
+                                  className='h-5 w-5 rounded object-cover'
+                                />
+                                角色 {char.id}
+                                {char.name && ` - ${char.name}`}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {projectMapping[identifier] && (
+                        <div className='h-8 w-8 overflow-hidden rounded'>
+                          {(() => {
+                            const char = globalCharacters.find(
+                              (c) => c.id === projectMapping[identifier]
+                            );
+                            return char?.imageData ? (
+                              <img
+                                src={char.imageData}
+                                alt=''
+                                className='h-full w-full object-cover'
+                              />
+                            ) : null;
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+
+          <Separator className='my-2' />
+
           {/* 角色引用选择区域 */}
           <div className='space-y-3'>
             <div className='flex items-center justify-between'>
-              <Label>角色引用 (最多3个，从Settings配置中选择)</Label>
+              <Label>角色引用 (最多3个)</Label>
               <span className='text-muted-foreground text-xs'>
                 已选择: {selectedCharacterRefs.length}/3
               </span>
             </div>
 
-            {availableCharacters.length > 0 ? (
+            {configuredCharacters.length > 0 ? (
               <div className='flex flex-wrap gap-2'>
-                {availableCharacters.map((mapping) => {
-                  const isSelected = selectedCharacterRefs.includes(
-                    mapping.identifier
-                  );
+                {configuredCharacters.map(({ identifier, character }) => {
+                  const isSelected = selectedCharacterRefs.includes(identifier);
                   const isDisabled =
                     !isSelected && selectedCharacterRefs.length >= 3;
 
                   return (
                     <div
-                      key={mapping.identifier}
+                      key={identifier}
                       className={`flex cursor-pointer items-center gap-2 rounded-md border p-2 transition-colors ${
                         isSelected
                           ? 'border-primary bg-primary/10'
@@ -201,50 +338,63 @@ export function PromptEditDialog({
                             : 'hover:border-primary/50'
                       }`}
                       onClick={() =>
-                        !isDisabled && toggleCharacterRef(mapping.identifier)
+                        !isDisabled && toggleCharacterRef(identifier)
                       }
                     >
                       <Checkbox
                         checked={isSelected}
                         disabled={isDisabled || isLoading}
-                        onCheckedChange={() =>
-                          toggleCharacterRef(mapping.identifier)
-                        }
+                        onCheckedChange={() => toggleCharacterRef(identifier)}
                       />
-                      {mapping.reference_image_url && (
+                      {character.imageData && (
                         <img
-                          src={mapping.reference_image_url}
-                          alt={mapping.identifier}
+                          src={character.imageData}
+                          alt={identifier}
                           className='h-8 w-8 rounded object-cover'
                         />
                       )}
                       <span className='text-sm'>
-                        {getCharacterDisplayName(mapping.identifier)}
+                        {identifier}
+                        {character.name && `: ${character.name}`}
                       </span>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className='text-muted-foreground text-sm'>
-                暂无可用角色，请先在 Settings 页面配置角色参考图
-              </p>
+              <Alert>
+                <AlertCircle className='h-4 w-4' />
+                <AlertDescription>
+                  暂无可用角色，请先配置项目角色映射（点击上方&ldquo;项目角色映射配置&rdquo;）
+                </AlertDescription>
+              </Alert>
             )}
 
             {/* 已选择的角色标签 */}
             {selectedCharacterRefs.length > 0 && (
               <div className='flex flex-wrap items-center gap-2'>
                 <span className='text-muted-foreground text-xs'>已选择:</span>
-                {selectedCharacterRefs.map((ref) => (
-                  <Badge key={ref} variant='secondary' className='gap-1'>
-                    <User className='h-3 w-3' />
-                    {getCharacterDisplayName(ref)}
-                    <X
-                      className='hover:text-destructive h-3 w-3 cursor-pointer'
-                      onClick={() => toggleCharacterRef(ref)}
-                    />
-                  </Badge>
-                ))}
+                {selectedCharacterRefs.map((ref) => {
+                  const config = getCharacterConfig(ref);
+                  return (
+                    <Badge key={ref} variant='secondary' className='gap-1'>
+                      {config?.imageData && (
+                        <img
+                          src={config.imageData}
+                          alt={ref}
+                          className='h-4 w-4 rounded object-cover'
+                        />
+                      )}
+                      <User className='h-3 w-3' />
+                      {ref}
+                      {config?.name && `: ${config.name}`}
+                      <X
+                        className='hover:text-destructive h-3 w-3 cursor-pointer'
+                        onClick={() => toggleCharacterRef(ref)}
+                      />
+                    </Badge>
+                  );
+                })}
               </div>
             )}
           </div>

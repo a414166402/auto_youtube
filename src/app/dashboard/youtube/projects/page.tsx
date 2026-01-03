@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, Search, Filter } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -23,23 +22,19 @@ import {
 import { ProjectCard } from '@/components/youtube/project-card';
 import { CreateProjectDialog } from '@/components/youtube/create-project-dialog';
 import { getProjects, deleteProject } from '@/lib/api/youtube';
-import type { VideoProject, ProjectStatus } from '@/types/youtube';
+import type { ProjectListItem } from '@/types/youtube';
 import { useToast } from '@/components/ui/use-toast';
 
 const PAGE_SIZE = 12;
 
+// 与后端ProjectStatus枚举对齐
 const statusOptions: { value: string; label: string }[] = [
   { value: 'all', label: '全部状态' },
   { value: 'created', label: '已创建' },
-  { value: 'downloading', label: '下载中' },
-  { value: 'downloaded', label: '已下载' },
-  { value: 'parsing', label: '解析中' },
-  { value: 'parsed', label: '已解析' },
-  { value: 'generating_prompts', label: '生成提示词' },
   { value: 'prompts_ready', label: '提示词就绪' },
-  { value: 'generating_images', label: '生成图片' },
+  { value: 'images_partial', label: '图片生成中' },
   { value: 'images_ready', label: '图片就绪' },
-  { value: 'generating_videos', label: '生成视频' },
+  { value: 'videos_partial', label: '视频生成中' },
   { value: 'completed', label: '已完成' },
   { value: 'failed', label: '失败' }
 ];
@@ -49,15 +44,14 @@ export default function ProjectsPage() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  const [projects, setProjects] = useState<VideoProject[]>([]);
+  const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   const currentPage = Number(searchParams.get('page')) || 1;
   const currentStatus = searchParams.get('status') || 'all';
-
-  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const fetchProjects = useCallback(async () => {
     setIsLoading(true);
@@ -70,8 +64,10 @@ export default function ProjectsPage() {
         params.status = currentStatus;
       }
       const response = await getProjects(params);
-      setProjects(response.data);
+      // 使用后端返回的items字段
+      setProjects(response.items);
       setTotal(response.total);
+      setTotalPages(response.pages);
     } catch (error) {
       console.error('Failed to fetch projects:', error);
       toast({

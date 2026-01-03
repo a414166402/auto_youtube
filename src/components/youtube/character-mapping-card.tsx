@@ -1,191 +1,122 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
-import { Upload, User, ImageIcon, X, Loader2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import type { CharacterMapping } from '@/types/youtube';
+import { User, ImageIcon, Link2, Link2Off } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import type { GlobalCharacter, PromptIdentifier } from '@/lib/character-config';
 
 export interface CharacterMappingCardProps {
-  mapping: CharacterMapping;
-  onNameChange: (identifier: string, name: string) => void;
-  onImageUpload: (identifier: string, file: File) => Promise<void>;
+  identifier: PromptIdentifier; // 提示词中的角色标识 A/B/C/D/E/F
+  mappedCharacterId: number | null; // 映射到的全局角色ID
+  globalCharacters: GlobalCharacter[]; // 全局角色库
+  onMappingChange: (
+    identifier: PromptIdentifier,
+    globalCharacterId: number | null
+  ) => void;
 }
 
 export function CharacterMappingCard({
-  mapping,
-  onNameChange,
-  onImageUpload
+  identifier,
+  mappedCharacterId,
+  globalCharacters,
+  onMappingChange
 }: CharacterMappingCardProps) {
-  const [isUploading, setIsUploading] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // 获取当前映射的角色
+  const mappedCharacter = mappedCharacterId
+    ? globalCharacters.find((c) => c.id === mappedCharacterId)
+    : null;
 
-  const handleFileSelect = useCallback(
-    async (file: File) => {
-      // 验证文件类型
-      if (!file.type.startsWith('image/')) {
-        return;
-      }
+  // 获取有图片的角色列表（用于下拉选项）
+  const availableCharacters = globalCharacters.filter((c) => c.imageData);
 
-      // 验证文件大小 (最大 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        return;
-      }
-
-      // 创建预览
-      const preview = URL.createObjectURL(file);
-      setPreviewUrl(preview);
-
-      setIsUploading(true);
-      try {
-        await onImageUpload(mapping.identifier, file);
-      } finally {
-        setIsUploading(false);
-        // 清理预览URL
-        URL.revokeObjectURL(preview);
-        setPreviewUrl(null);
-      }
-    },
-    [mapping.identifier, onImageUpload]
-  );
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFileSelect(file);
-    }
-    // 重置input以允许重复选择同一文件
-    e.target.value = '';
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      handleFileSelect(file);
+  const handleValueChange = (value: string) => {
+    if (value === 'none') {
+      onMappingChange(identifier, null);
+    } else {
+      onMappingChange(identifier, parseInt(value, 10));
     }
   };
-
-  const handleClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  // 显示的图片URL（优先显示预览，其次是已上传的图片）
-  const displayImageUrl = previewUrl || mapping.reference_image_url;
 
   return (
-    <Card>
-      <CardHeader className='pb-3'>
-        <CardTitle className='flex items-center gap-2 text-base'>
-          <div className='bg-primary/10 flex h-8 w-8 items-center justify-center rounded-full'>
-            <User className='text-primary h-4 w-4' />
+    <Card className='overflow-hidden'>
+      <CardContent className='flex items-center gap-4 p-4'>
+        {/* 角色标识 */}
+        <div className='flex flex-col items-center gap-1'>
+          <div className='bg-primary text-primary-foreground flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold'>
+            {identifier}
           </div>
-          <span>
-            角色 {mapping.number} → 标识{' '}
-            <span className='text-primary font-bold'>{mapping.identifier}</span>
+          <span className='text-muted-foreground text-xs'>
+            角色{identifier}
           </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className='space-y-4'>
-        {/* 名称输入 */}
-        <div className='space-y-2'>
-          <label className='text-sm font-medium'>角色名称</label>
-          <Input
-            placeholder='输入角色名称（可选）'
-            value={mapping.name || ''}
-            onChange={(e) => onNameChange(mapping.identifier, e.target.value)}
-          />
         </div>
 
-        {/* 图片上传区域 */}
-        <div className='space-y-2'>
-          <label className='text-sm font-medium'>参考图片</label>
-          <div
-            className={cn(
-              'relative cursor-pointer rounded-lg border-2 border-dashed transition-colors',
-              isDragOver
-                ? 'border-primary bg-primary/5'
-                : 'border-muted-foreground/25 hover:border-muted-foreground/50',
-              isUploading && 'pointer-events-none opacity-60'
-            )}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={handleClick}
-          >
-            <input
-              ref={fileInputRef}
-              type='file'
-              accept='image/*'
-              className='hidden'
-              onChange={handleInputChange}
-              disabled={isUploading}
-            />
+        {/* 映射箭头 */}
+        <div className='text-muted-foreground'>
+          {mappedCharacter ? (
+            <Link2 className='h-5 w-5' />
+          ) : (
+            <Link2Off className='h-5 w-5' />
+          )}
+        </div>
 
-            {displayImageUrl ? (
-              // 显示已上传的图片
-              <div className='relative mx-auto aspect-square max-w-[200px] p-2'>
-                <img
-                  src={displayImageUrl}
-                  alt={`角色 ${mapping.identifier} 参考图`}
-                  className='h-full w-full rounded-md object-cover'
-                />
-                {isUploading && (
-                  <div className='bg-background/80 absolute inset-0 flex items-center justify-center rounded-md'>
-                    <Loader2 className='text-primary h-6 w-6 animate-spin' />
+        {/* 映射选择 */}
+        <div className='flex-1'>
+          <Select
+            value={mappedCharacterId?.toString() || 'none'}
+            onValueChange={handleValueChange}
+          >
+            <SelectTrigger className='w-full'>
+              <SelectValue placeholder='选择对应的全局角色' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='none'>
+                <span className='text-muted-foreground'>未映射</span>
+              </SelectItem>
+              {availableCharacters.map((char) => (
+                <SelectItem key={char.id} value={char.id.toString()}>
+                  <div className='flex items-center gap-2'>
+                    {char.imageData && (
+                      <img
+                        src={char.imageData}
+                        alt={`角色 ${char.id}`}
+                        className='h-6 w-6 rounded object-cover'
+                      />
+                    )}
+                    <span>
+                      角色 {char.id}
+                      {char.name && ` - ${char.name}`}
+                    </span>
                   </div>
-                )}
-                {!isUploading && (
-                  <div className='bg-background/80 absolute inset-0 flex items-center justify-center rounded-md opacity-0 transition-opacity hover:opacity-100'>
-                    <div className='text-center'>
-                      <Upload className='text-muted-foreground mx-auto mb-1 h-6 w-6' />
-                      <p className='text-muted-foreground text-xs'>
-                        点击更换图片
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              // 上传提示
-              <div className='flex flex-col items-center justify-center px-4 py-8'>
-                {isUploading ? (
-                  <Loader2 className='text-muted-foreground h-8 w-8 animate-spin' />
-                ) : (
-                  <>
-                    <div className='mb-3 rounded-full border border-dashed p-3'>
-                      <ImageIcon className='text-muted-foreground h-6 w-6' />
-                    </div>
-                    <p className='text-muted-foreground text-center text-sm'>
-                      拖拽图片到此处，或点击上传
-                    </p>
-                    <p className='text-muted-foreground/70 mt-1 text-xs'>
-                      支持 JPG、PNG、GIF，最大 5MB
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+                </SelectItem>
+              ))}
+              {availableCharacters.length === 0 && (
+                <div className='text-muted-foreground px-2 py-1.5 text-sm'>
+                  暂无可用角色，请先在 Settings 页面上传角色图片
+                </div>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 映射结果预览 */}
+        <div className='flex h-12 w-12 items-center justify-center rounded-lg border'>
+          {mappedCharacter?.imageData ? (
+            <img
+              src={mappedCharacter.imageData}
+              alt={`角色 ${mappedCharacter.id}`}
+              className='h-full w-full rounded-lg object-cover'
+            />
+          ) : (
+            <div className='text-muted-foreground flex flex-col items-center'>
+              <ImageIcon className='h-5 w-5' />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

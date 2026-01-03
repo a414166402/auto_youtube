@@ -9,6 +9,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { getProxiedImageUrl } from '@/lib/utils/media-proxy';
 import type { GeneratedImage } from '@/types/youtube';
 
 export interface ImageSelectorProps {
@@ -72,7 +73,7 @@ export function ImageSelector({
       >
         {/* Image */}
         <img
-          src={image.image_url}
+          src={getProxiedImageUrl(image.url)}
           alt={`生成的图片`}
           className='h-full w-full object-cover'
         />
@@ -133,7 +134,7 @@ export function ImageSelector({
           </DialogHeader>
           <div className='bg-muted relative aspect-video overflow-hidden rounded-md'>
             <img
-              src={image.image_url}
+              src={getProxiedImageUrl(image.url)}
               alt='图片预览'
               className='h-full w-full object-contain'
             />
@@ -144,9 +145,6 @@ export function ImageSelector({
               {image.generation_type === 'text_to_image'
                 ? '文生图'
                 : '图文生图'}
-            </span>
-            <span>
-              创建时间: {new Date(image.created_at).toLocaleString('zh-CN')}
             </span>
           </div>
         </DialogContent>

@@ -13,10 +13,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { Storyboard } from '@/types/youtube';
+import type { SourceStoryboard } from '@/types/youtube';
 
 export interface TimeAdjustDialogProps {
-  storyboard: Storyboard | null;
+  storyboard: SourceStoryboard | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (id: string, startTime: number, endTime: number) => Promise<void>;

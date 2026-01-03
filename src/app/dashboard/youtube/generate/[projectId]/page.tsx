@@ -4,47 +4,62 @@ import { use, useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Image,
   Video,
   Loader2,
-  Pause,
-  Play,
-  X,
   RefreshCw,
   Download,
-  CheckCircle
+  CheckCircle,
+  Play,
+  Users,
+  ZoomIn,
+  Pencil,
+  Save
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import {
-  ImageGenerationCard,
-  VideoGenerationCard,
-  VideoPlayer
-} from '@/components/youtube';
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from '@/components/ui/popover';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   getProject,
-  getPrompts,
-  getGeneratedImages,
-  getGeneratedVideos,
-  generateImages,
-  generateVideos,
-  selectImage,
-  selectVideo,
-  downloadVideos,
-  getTask,
-  pauseTask,
-  resumeTask,
-  cancelTask
+  updateProject,
+  generateImage,
+  generateVideo
 } from '@/lib/api/youtube';
+import {
+  loadGlobalCharactersAsync,
+  loadProjectMapping,
+  getCharacterForIdentifier,
+  type GlobalCharacter,
+  type ProjectCharacterMapping
+} from '@/lib/character-config';
+import {
+  getProxiedImageUrl,
+  getProxiedVideoUrl
+} from '@/lib/utils/media-proxy';
+import { VideoPlayer } from '@/components/youtube/video-player';
 import type {
-  VideoProject,
-  Prompt,
+  ProjectResponse,
   GeneratedImage,
-  GeneratedVideo,
-  GenerationTask,
-  TaskStatus
+  GeneratedVideo
 } from '@/types/youtube';
 
 interface GeneratePageProps {
@@ -59,49 +74,64 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  // Get initial tab from URL params
   const initialTab = searchParams.get('tab') === 'video' ? 'video' : 'image';
 
-  const [project, setProject] = useState<VideoProject | null>(null);
-  const [prompts, setPrompts] = useState<Prompt[]>([]);
-  const [images, setImages] = useState<GeneratedImage[]>([]);
-  const [videos, setVideos] = useState<GeneratedVideo[]>([]);
+  const [project, setProject] = useState<ProjectResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [globalCharacters, setGlobalCharacters] = useState<GlobalCharacter[]>(
+    []
+  );
+  const [projectMapping, setProjectMapping] = useState<ProjectCharacterMapping>(
+    {}
+  );
 
-  // Task state for images
-  const [imageTask, setImageTask] = useState<GenerationTask | null>(null);
-  const [isGeneratingImages, setIsGeneratingImages] = useState(false);
+  // 生成状态 - 使用 Set 支持多个并发生成
+  const [generatingImageIndices, setGeneratingImageIndices] = useState<
+    Set<number>
+  >(new Set());
+  const [generatingVideoIndices, setGeneratingVideoIndices] = useState<
+    Set<number>
+  >(new Set());
 
-  // Task state for videos
-  const [videoTask, setVideoTask] = useState<GenerationTask | null>(null);
-  const [isGeneratingVideos, setIsGeneratingVideos] = useState(false);
+  // 预览状态
+  const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
+  const [previewImageOpen, setPreviewImageOpen] = useState(false);
+  const [previewVideo, setPreviewVideo] = useState<GeneratedVideo | null>(null);
+  const [previewVideoOpen, setPreviewVideoOpen] = useState(false);
+  const [imageDimensions, setImageDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
 
-  // Download state
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState(0);
+  // 提示词编辑状态（图片生成）
+  const [editingPromptIndex, setEditingPromptIndex] = useState<number | null>(
+    null
+  );
+  const [editedPrompt, setEditedPrompt] = useState<string>('');
+  const [savingPrompt, setSavingPrompt] = useState(false);
 
-  // Video player state
-  const [playingVideo, setPlayingVideo] = useState<GeneratedVideo | null>(null);
-  const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  // 视频提示词编辑状态
+  const [editingVideoPromptIndex, setEditingVideoPromptIndex] = useState<
+    number | null
+  >(null);
+  const [editedVideoPrompt, setEditedVideoPrompt] = useState<string>('');
+  const [savingVideoPrompt, setSavingVideoPrompt] = useState(false);
 
-  // Load project data
+  // 加载数据
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [projectData, promptsData, imagesData, videosData] =
-        await Promise.all([
-          getProject(projectId),
-          getPrompts(projectId),
-          getGeneratedImages(projectId),
-          getGeneratedVideos(projectId)
-        ]);
-
+      const projectData = await getProject(projectId);
       setProject(projectData);
-      setPrompts(promptsData.data);
-      setImages(imagesData.data);
-      setVideos(videosData.data);
+
+      // 加载全局角色库和项目映射
+      const characters = await loadGlobalCharactersAsync();
+      setGlobalCharacters(characters);
+      const mapping = loadProjectMapping(projectId);
+      setProjectMapping(mapping);
+
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载数据失败');
@@ -114,160 +144,150 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     loadData();
   }, [loadData]);
 
-  // Check if task is active
-  const isTaskActive = (status: TaskStatus): boolean => {
-    return status === 'pending' || status === 'running';
+  // 辅助函数：从 "角色A" 或 "A" 提取标识符
+  const extractIdentifier = (ref: string): string => {
+    if (ref.startsWith('角色')) {
+      return ref.replace('角色', '');
+    }
+    return ref;
   };
 
-  // Poll image task status
-  useEffect(() => {
-    if (!imageTask || !isTaskActive(imageTask.status)) {
-      return;
-    }
+  // 生成单个分镜图片
+  const handleGenerateImage = async (storyboardIndex: number) => {
+    if (!project) return;
 
-    const interval = setInterval(async () => {
-      try {
-        const task = await getTask(imageTask.id);
-        setImageTask(task);
+    const storyboard = project.data.storyboards[storyboardIndex];
+    if (!storyboard) return;
 
-        if (task.status === 'completed') {
-          toast({ title: '生成完成', description: '图片生成已完成' });
-          setIsGeneratingImages(false);
-          loadData();
-        } else if (task.status === 'failed') {
-          toast({
-            title: '生成失败',
-            description: task.error_message || '图片生成失败',
-            variant: 'destructive'
-          });
-          setIsGeneratingImages(false);
-        }
-      } catch (err) {
-        console.error('获取任务状态失败:', err);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [imageTask, toast, loadData]);
-
-  // Poll video task status
-  useEffect(() => {
-    if (!videoTask || !isTaskActive(videoTask.status)) {
-      return;
-    }
-
-    const interval = setInterval(async () => {
-      try {
-        const task = await getTask(videoTask.id);
-        setVideoTask(task);
-
-        if (task.status === 'completed') {
-          toast({ title: '生成完成', description: '视频生成已完成' });
-          setIsGeneratingVideos(false);
-          loadData();
-        } else if (task.status === 'failed') {
-          toast({
-            title: '生成失败',
-            description: task.error_message || '视频生成失败',
-            variant: 'destructive'
-          });
-          setIsGeneratingVideos(false);
-        }
-      } catch (err) {
-        console.error('获取任务状态失败:', err);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [videoTask, toast, loadData]);
-
-  // ============ Image Generation Handlers ============
-
-  const handleStartImageGeneration = async (promptIds?: string[]) => {
+    // 添加到生成中集合
+    setGeneratingImageIndices((prev) => new Set(prev).add(storyboardIndex));
     try {
-      setIsGeneratingImages(true);
-      const response = await generateImages(projectId, {
-        storyboard_ids: promptIds, // API still uses storyboard_ids for backward compatibility
-        parallel_count: 3
-      });
-
-      toast({ title: '开始生成', description: '图片生成已开始' });
-      const task = await getTask(response.task_id);
-      setImageTask(task);
-    } catch (err) {
-      toast({
-        title: '启动失败',
-        description: err instanceof Error ? err.message : '启动生成失败',
-        variant: 'destructive'
-      });
-      setIsGeneratingImages(false);
-    }
-  };
-
-  const handlePauseImageTask = async () => {
-    if (!imageTask) return;
-    try {
-      await pauseTask(imageTask.id);
-      const task = await getTask(imageTask.id);
-      setImageTask(task);
-      toast({ title: '已暂停', description: '图片生成任务已暂停' });
-    } catch (err) {
-      toast({
-        title: '暂停失败',
-        description: err instanceof Error ? err.message : '暂停任务失败',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const handleResumeImageTask = async () => {
-    if (!imageTask) return;
-    try {
-      await resumeTask(imageTask.id);
-      const task = await getTask(imageTask.id);
-      setImageTask(task);
-      toast({ title: '已继续', description: '图片生成任务已继续' });
-    } catch (err) {
-      toast({
-        title: '继续失败',
-        description: err instanceof Error ? err.message : '继续任务失败',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const handleCancelImageTask = async () => {
-    if (!imageTask) return;
-    try {
-      await cancelTask(imageTask.id);
-      setImageTask(null);
-      setIsGeneratingImages(false);
-      toast({ title: '已取消', description: '图片生成任务已取消' });
-    } catch (err) {
-      toast({
-        title: '取消失败',
-        description: err instanceof Error ? err.message : '取消任务失败',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const handleSelectImage = async (imageId: string, isSelected: boolean) => {
-    try {
-      const updatedImage = await selectImage(imageId, isSelected);
-      setImages((prev) =>
-        prev.map((img) => {
-          if (
-            isSelected &&
-            img.storyboard_index === updatedImage.storyboard_index
-          ) {
-            return img.id === imageId
-              ? updatedImage
-              : { ...img, is_selected: false };
+      // 获取角色引用图片（Base64数据）
+      const characterImages: string[] = [];
+      if (storyboard.character_refs) {
+        for (const ref of storyboard.character_refs) {
+          // 从 "角色A" 提取 "A"，然后通过项目映射找到全局角色
+          const identifier = extractIdentifier(ref);
+          const character = getCharacterForIdentifier(
+            identifier,
+            projectMapping,
+            globalCharacters
+          );
+          if (character?.imageData) {
+            characterImages.push(character.imageData);
           }
-          return img.id === imageId ? updatedImage : img;
-        })
-      );
+        }
+      }
+
+      const result = await generateImage(projectId, {
+        storyboard_index: storyboardIndex,
+        character_images:
+          characterImages.length > 0 ? characterImages : undefined
+      });
+
+      if (result.success) {
+        toast({
+          title: '生成成功',
+          description: `分镜 #${storyboardIndex + 1} 图片已生成`
+        });
+        loadData();
+      } else {
+        toast({
+          title: '生成失败',
+          description: result.error || '图片生成失败',
+          variant: 'destructive'
+        });
+      }
+    } catch (err) {
+      toast({
+        title: '生成失败',
+        description: err instanceof Error ? err.message : '图片生成失败',
+        variant: 'destructive'
+      });
+    } finally {
+      // 从生成中集合移除
+      setGeneratingImageIndices((prev) => {
+        const next = new Set(prev);
+        next.delete(storyboardIndex);
+        return next;
+      });
+    }
+  };
+
+  // 生成单个分镜视频
+  const handleGenerateVideo = async (storyboardIndex: number) => {
+    if (!project) return;
+
+    const storyboard = project.data.storyboards[storyboardIndex];
+    if (!storyboard) return;
+
+    // 检查是否有选中的图片
+    if (storyboard.selected_image_index === null) {
+      toast({
+        title: '请先选择图片',
+        description: '需要先选择一张图片作为视频生成的源图片',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // 添加到生成中集合
+    setGeneratingVideoIndices((prev) => new Set(prev).add(storyboardIndex));
+    try {
+      const result = await generateVideo(projectId, {
+        storyboard_index: storyboardIndex
+      });
+
+      if (result.success) {
+        toast({
+          title: '生成成功',
+          description: `分镜 #${storyboardIndex + 1} 视频已生成`
+        });
+        loadData();
+      } else {
+        toast({
+          title: '生成失败',
+          description: result.error || '视频生成失败',
+          variant: 'destructive'
+        });
+      }
+    } catch (err) {
+      toast({
+        title: '生成失败',
+        description: err instanceof Error ? err.message : '视频生成失败',
+        variant: 'destructive'
+      });
+    } finally {
+      // 从生成中集合移除
+      setGeneratingVideoIndices((prev) => {
+        const next = new Set(prev);
+        next.delete(storyboardIndex);
+        return next;
+      });
+    }
+  };
+
+  // 选择图片
+  const handleSelectImage = async (
+    storyboardIndex: number,
+    imageIndex: number
+  ) => {
+    if (!project) return;
+
+    try {
+      const storyboards = [...project.data.storyboards];
+      storyboards[storyboardIndex] = {
+        ...storyboards[storyboardIndex],
+        selected_image_index: imageIndex
+      };
+
+      await updateProject(projectId, { storyboards });
+      loadData();
+
+      toast({
+        title: '已选择',
+        description: `分镜 #${storyboardIndex + 1} 图片已选择`
+      });
     } catch (err) {
       toast({
         title: '选择失败',
@@ -277,97 +297,27 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     }
   };
 
-  const handleRegenerateImage = async (promptId: string) => {
-    await handleStartImageGeneration([promptId]);
-  };
+  // 选择视频
+  const handleSelectVideo = async (
+    storyboardIndex: number,
+    videoIndex: number
+  ) => {
+    if (!project) return;
 
-  // ============ Video Generation Handlers ============
-
-  const handleStartVideoGeneration = async (promptIds?: string[]) => {
     try {
-      setIsGeneratingVideos(true);
-      const response = await generateVideos(projectId, {
-        storyboard_ids: promptIds, // API still uses storyboard_ids for backward compatibility
-        parallel_count: 2
-      });
+      const storyboards = [...project.data.storyboards];
+      storyboards[storyboardIndex] = {
+        ...storyboards[storyboardIndex],
+        selected_video_index: videoIndex
+      };
 
-      toast({ title: '开始生成', description: '视频生成已开始' });
-      const task = await getTask(response.task_id);
-      setVideoTask(task);
-    } catch (err) {
+      await updateProject(projectId, { storyboards });
+      loadData();
+
       toast({
-        title: '启动失败',
-        description: err instanceof Error ? err.message : '启动生成失败',
-        variant: 'destructive'
+        title: '已选择',
+        description: `分镜 #${storyboardIndex + 1} 视频已选择`
       });
-      setIsGeneratingVideos(false);
-    }
-  };
-
-  const handlePauseVideoTask = async () => {
-    if (!videoTask) return;
-    try {
-      await pauseTask(videoTask.id);
-      const task = await getTask(videoTask.id);
-      setVideoTask(task);
-      toast({ title: '已暂停', description: '视频生成任务已暂停' });
-    } catch (err) {
-      toast({
-        title: '暂停失败',
-        description: err instanceof Error ? err.message : '暂停任务失败',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const handleResumeVideoTask = async () => {
-    if (!videoTask) return;
-    try {
-      await resumeTask(videoTask.id);
-      const task = await getTask(videoTask.id);
-      setVideoTask(task);
-      toast({ title: '已继续', description: '视频生成任务已继续' });
-    } catch (err) {
-      toast({
-        title: '继续失败',
-        description: err instanceof Error ? err.message : '继续任务失败',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const handleCancelVideoTask = async () => {
-    if (!videoTask) return;
-    try {
-      await cancelTask(videoTask.id);
-      setVideoTask(null);
-      setIsGeneratingVideos(false);
-      toast({ title: '已取消', description: '视频生成任务已取消' });
-    } catch (err) {
-      toast({
-        title: '取消失败',
-        description: err instanceof Error ? err.message : '取消任务失败',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const handleSelectVideo = async (videoId: string, isSelected: boolean) => {
-    try {
-      const updatedVideo = await selectVideo(videoId, isSelected);
-      setVideos((prev) =>
-        prev.map((vid) => {
-          if (
-            isSelected &&
-            vid.storyboard_index === updatedVideo.storyboard_index
-          ) {
-            return vid.id === videoId
-              ? updatedVideo
-              : { ...vid, is_selected: false };
-          }
-          return vid.id === videoId ? updatedVideo : vid;
-        })
-      );
     } catch (err) {
       toast({
         title: '选择失败',
@@ -377,112 +327,241 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     }
   };
 
-  const handleRegenerateVideo = async (promptId: string) => {
-    await handleStartVideoGeneration([promptId]);
+  // 打开图片预览
+  const handlePreviewImage = (image: GeneratedImage, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPreviewImage(image);
+    setImageDimensions(null);
+    setPreviewImageOpen(true);
   };
 
-  const handlePlayVideo = (video: GeneratedVideo) => {
-    setPlayingVideo(video);
-    setIsPlayerOpen(true);
+  // 图片加载完成后获取尺寸
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
   };
 
-  // ============ Download Handler ============
+  // 打开视频播放
+  const handlePlayVideo = (video: GeneratedVideo, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPreviewVideo(video);
+    setPreviewVideoOpen(true);
+  };
 
-  const handleDownloadVideos = async () => {
-    try {
-      setIsDownloading(true);
-      setDownloadProgress(0);
+  // 批量生成所有图片
+  const handleGenerateAllImages = async () => {
+    if (!project) return;
 
-      // Simulate progress while waiting for download
-      const progressInterval = setInterval(() => {
-        setDownloadProgress((prev) => Math.min(prev + 10, 90));
-      }, 500);
-
-      const response = await downloadVideos(projectId);
-
-      clearInterval(progressInterval);
-      setDownloadProgress(100);
-
-      // Trigger download
-      const link = document.createElement('a');
-      link.href = response.download_url;
-      link.download = `${project?.name || 'videos'}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      toast({
-        title: '下载完成',
-        description: `已下载 ${response.file_count} 个视频，总大小 ${response.total_size}`
-      });
-    } catch (err) {
-      toast({
-        title: '下载失败',
-        description: err instanceof Error ? err.message : '下载视频失败',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsDownloading(false);
-      setDownloadProgress(0);
+    for (let i = 0; i < project.data.storyboards.length; i++) {
+      const sb = project.data.storyboards[i];
+      if (sb.images.length === 0) {
+        await handleGenerateImage(i);
+      }
     }
   };
 
-  // ============ Helper Functions ============
+  // 批量生成所有视频
+  const handleGenerateAllVideos = async () => {
+    if (!project) return;
 
-  const getImagesForPrompt = (storyboardIndex: number): GeneratedImage[] => {
-    return images.filter((img) => img.storyboard_index === storyboardIndex);
+    for (let i = 0; i < project.data.storyboards.length; i++) {
+      const sb = project.data.storyboards[i];
+      if (sb.selected_image_index !== null && sb.videos.length === 0) {
+        await handleGenerateVideo(i);
+      }
+    }
   };
 
-  const getVideosForPrompt = (storyboardIndex: number): GeneratedVideo[] => {
-    return videos.filter((vid) => vid.storyboard_index === storyboardIndex);
+  // 更新分镜角色引用
+  const handleUpdateCharacterRefs = async (
+    storyboardIndex: number,
+    refs: string[]
+  ) => {
+    if (!project) return;
+
+    try {
+      const storyboards = [...project.data.storyboards];
+      storyboards[storyboardIndex] = {
+        ...storyboards[storyboardIndex],
+        character_refs: refs.length > 0 ? refs : null
+      };
+
+      await updateProject(projectId, { storyboards });
+
+      // 更新本地状态
+      setProject({
+        ...project,
+        data: {
+          ...project.data,
+          storyboards
+        }
+      });
+
+      toast({
+        title: '已更新',
+        description:
+          refs.length > 0
+            ? `分镜 #${storyboardIndex + 1} 角色引用已更新为: ${refs.join(', ')}`
+            : `分镜 #${storyboardIndex + 1} 已切换为文生图模式`
+      });
+    } catch (err) {
+      toast({
+        title: '更新失败',
+        description: err instanceof Error ? err.message : '更新角色引用失败',
+        variant: 'destructive'
+      });
+    }
   };
 
-  const getSelectedImageForPrompt = (
-    storyboardIndex: number
-  ): GeneratedImage | null => {
-    return (
-      images.find(
-        (img) => img.storyboard_index === storyboardIndex && img.is_selected
-      ) || null
-    );
+  // 开始编辑提示词
+  const handleStartEditPrompt = (
+    storyboardIndex: number,
+    currentPrompt: string
+  ) => {
+    setEditingPromptIndex(storyboardIndex);
+    setEditedPrompt(currentPrompt || '');
   };
 
-  const getImagePromptStatus = (
-    storyboardIndex: number
-  ): 'selected' | 'generating' | 'pending' | 'has_images' => {
-    const promptImages = getImagesForPrompt(storyboardIndex);
-    const hasSelected = promptImages.some((img) => img.is_selected);
+  // 保存提示词
+  const handleSavePrompt = async (storyboardIndex: number) => {
+    if (!project) return;
 
-    if (hasSelected) return 'selected';
-    if (isGeneratingImages && imageTask) return 'generating';
-    if (promptImages.length > 0) return 'has_images';
-    return 'pending';
+    setSavingPrompt(true);
+    try {
+      const storyboards = [...project.data.storyboards];
+      storyboards[storyboardIndex] = {
+        ...storyboards[storyboardIndex],
+        text_to_image: editedPrompt
+      };
+
+      await updateProject(projectId, { storyboards });
+
+      // 更新本地状态
+      setProject({
+        ...project,
+        data: {
+          ...project.data,
+          storyboards
+        }
+      });
+
+      setEditingPromptIndex(null);
+      setEditedPrompt('');
+
+      toast({
+        title: '已保存',
+        description: `分镜 #${storyboardIndex + 1} 提示词已更新`
+      });
+    } catch (err) {
+      toast({
+        title: '保存失败',
+        description: err instanceof Error ? err.message : '保存提示词失败',
+        variant: 'destructive'
+      });
+    } finally {
+      setSavingPrompt(false);
+    }
   };
 
-  const getVideoPromptStatus = (
-    storyboardIndex: number
-  ): 'selected' | 'generating' | 'pending' | 'has_videos' => {
-    const promptVideos = getVideosForPrompt(storyboardIndex);
-    const hasSelected = promptVideos.some((vid) => vid.is_selected);
-
-    if (hasSelected) return 'selected';
-    if (isGeneratingVideos && videoTask) return 'generating';
-    if (promptVideos.length > 0) return 'has_videos';
-    return 'pending';
+  // 取消编辑提示词
+  const handleCancelEditPrompt = () => {
+    setEditingPromptIndex(null);
+    setEditedPrompt('');
   };
 
-  // Calculate progress stats
-  const imageSelectedCount = prompts.filter((p) =>
-    getImagesForPrompt(p.storyboard_index).some((img) => img.is_selected)
-  ).length;
+  // 开始编辑视频提示词
+  const handleStartEditVideoPrompt = (
+    storyboardIndex: number,
+    currentPrompt: string
+  ) => {
+    setEditingVideoPromptIndex(storyboardIndex);
+    setEditedVideoPrompt(currentPrompt || '');
+  };
 
-  const videoSelectedCount = prompts.filter((p) =>
-    getVideosForPrompt(p.storyboard_index).some((vid) => vid.is_selected)
-  ).length;
+  // 保存视频提示词
+  const handleSaveVideoPrompt = async (storyboardIndex: number) => {
+    if (!project) return;
 
-  const totalCount = prompts.length;
+    setSavingVideoPrompt(true);
+    try {
+      const storyboards = [...project.data.storyboards];
+      storyboards[storyboardIndex] = {
+        ...storyboards[storyboardIndex],
+        image_to_video: editedVideoPrompt
+      };
 
-  // ============ Render ============
+      await updateProject(projectId, { storyboards });
+
+      // 更新本地状态
+      setProject({
+        ...project,
+        data: {
+          ...project.data,
+          storyboards
+        }
+      });
+
+      setEditingVideoPromptIndex(null);
+      setEditedVideoPrompt('');
+
+      toast({
+        title: '已保存',
+        description: `分镜 #${storyboardIndex + 1} 视频提示词已更新`
+      });
+    } catch (err) {
+      toast({
+        title: '保存失败',
+        description: err instanceof Error ? err.message : '保存视频提示词失败',
+        variant: 'destructive'
+      });
+    } finally {
+      setSavingVideoPrompt(false);
+    }
+  };
+
+  // 取消编辑视频提示词
+  const handleCancelEditVideoPrompt = () => {
+    setEditingVideoPromptIndex(null);
+    setEditedVideoPrompt('');
+  };
+
+  // 获取有效的角色映射（有映射且有图片的）
+  const getValidCharacterMappings = () => {
+    const result: { identifier: string; character: GlobalCharacter }[] = [];
+    const identifiers = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+    for (const identifier of identifiers) {
+      const character = getCharacterForIdentifier(
+        identifier,
+        projectMapping,
+        globalCharacters
+      );
+      if (character?.imageData) {
+        result.push({ identifier, character });
+      }
+    }
+
+    return result;
+  };
+
+  // 计算进度
+  const getImageProgress = () => {
+    if (!project) return { selected: 0, total: 0 };
+    const storyboards = project.data.storyboards;
+    const selected = storyboards.filter(
+      (sb) => sb.selected_image_index !== null
+    ).length;
+    return { selected, total: storyboards.length };
+  };
+
+  const getVideoProgress = () => {
+    if (!project) return { selected: 0, total: 0 };
+    const storyboards = project.data.storyboards;
+    const selected = storyboards.filter(
+      (sb) => sb.selected_video_index !== null
+    ).length;
+    return { selected, total: storyboards.length };
+  };
 
   if (loading) {
     return (
@@ -510,6 +589,10 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     );
   }
 
+  const storyboards = project.data.storyboards;
+  const imageProgress = getImageProgress();
+  const videoProgress = getVideoProgress();
+
   return (
     <div className='container mx-auto space-y-6'>
       {/* Header */}
@@ -523,7 +606,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         </Button>
         <div>
           <h1 className='text-2xl font-bold'>素材生成</h1>
-          <p className='text-muted-foreground text-sm'>{project.name}</p>
+          <p className='text-muted-foreground text-sm'>{project.data.name}</p>
         </div>
       </div>
 
@@ -542,226 +625,388 @@ export default function GeneratePage({ params }: GeneratePageProps) {
 
         {/* Image Generation Tab */}
         <TabsContent value='image' className='space-y-6'>
-          {/* Progress Section */}
+          {/* Progress */}
           <div className='bg-card space-y-4 rounded-lg border p-4'>
             <div className='flex items-center justify-between'>
-              <div className='space-y-1'>
+              <div>
                 <p className='text-sm font-medium'>生成进度</p>
                 <p className='text-muted-foreground text-xs'>
-                  已选择: {imageSelectedCount}/{totalCount} 个分镜
+                  已选择: {imageProgress.selected}/{imageProgress.total} 个分镜
+                  {generatingImageIndices.size > 0 &&
+                    ` (${generatingImageIndices.size} 个生成中)`}
                 </p>
               </div>
-
-              {/* Task Controls */}
-              <div className='flex items-center gap-2'>
-                {imageTask && isTaskActive(imageTask.status) ? (
-                  <>
-                    {imageTask.status === 'running' ? (
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        onClick={handlePauseImageTask}
-                        className='gap-1'
-                      >
-                        <Pause className='h-4 w-4' />
-                        暂停
-                      </Button>
-                    ) : imageTask.status === 'paused' ? (
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        onClick={handleResumeImageTask}
-                        className='gap-1'
-                      >
-                        <Play className='h-4 w-4' />
-                        继续
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={handleCancelImageTask}
-                      className='gap-1'
-                    >
-                      <X className='h-4 w-4' />
-                      取消
-                    </Button>
-                  </>
+              <Button
+                size='sm'
+                onClick={handleGenerateAllImages}
+                disabled={generatingImageIndices.size > 0}
+                className='gap-1'
+              >
+                {generatingImageIndices.size > 0 ? (
+                  <Loader2 className='h-4 w-4 animate-spin' />
                 ) : (
-                  <Button
-                    size='sm'
-                    onClick={() => handleStartImageGeneration()}
-                    disabled={isGeneratingImages}
-                    className='gap-1'
-                  >
-                    {isGeneratingImages ? (
-                      <Loader2 className='h-4 w-4 animate-spin' />
-                    ) : (
-                      <RefreshCw className='h-4 w-4' />
-                    )}
-                    批量生成
-                  </Button>
+                  <RefreshCw className='h-4 w-4' />
                 )}
-              </div>
+                批量生成
+              </Button>
             </div>
-
-            {/* Progress Bar */}
-            {imageTask && (
-              <div className='space-y-2'>
-                <Progress value={imageTask.progress} className='h-2' />
-                <div className='text-muted-foreground flex justify-between text-xs'>
-                  <span>
-                    {imageTask.completed_items}/{imageTask.total_items} 完成
-                    {imageTask.failed_items > 0 && (
-                      <span className='text-destructive ml-2'>
-                        {imageTask.failed_items} 失败
-                      </span>
-                    )}
-                  </span>
-                  <span>{imageTask.progress}%</span>
-                </div>
-              </div>
-            )}
+            <Progress
+              value={
+                (imageProgress.selected / Math.max(imageProgress.total, 1)) *
+                100
+              }
+              className='h-2'
+            />
           </div>
 
-          {/* Storyboard Image Cards */}
-          <div className='space-y-4'>
-            {prompts.map((prompt) => (
-              <ImageGenerationCard
-                key={prompt.id}
-                prompt={prompt}
-                images={getImagesForPrompt(prompt.storyboard_index)}
-                status={getImagePromptStatus(prompt.storyboard_index)}
-                onSelectImage={handleSelectImage}
-                onRegenerate={() => handleRegenerateImage(prompt.id)}
-                isGenerating={isGeneratingImages}
-              />
+          {/* Storyboard Cards - 4列网格布局 */}
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4'>
+            {storyboards.map((storyboard, index) => (
+              <Card key={index} className='flex flex-col'>
+                <CardHeader className='pb-2'>
+                  <div className='flex items-center justify-between'>
+                    <CardTitle className='text-sm'>
+                      分镜 #{storyboard.index + 1}
+                    </CardTitle>
+                    {storyboard.selected_image_index !== null && (
+                      <Badge variant='default' className='gap-1 text-xs'>
+                        <CheckCircle className='h-3 w-3' />
+                        已选
+                      </Badge>
+                    )}
+                  </div>
+                  {/* 角色参考图展示 */}
+                  {storyboard.character_refs &&
+                  storyboard.character_refs.length > 0 ? (
+                    <div className='mt-1 flex items-center gap-1'>
+                      {storyboard.character_refs.map((ref) => {
+                        const identifier = extractIdentifier(ref);
+                        const character = getCharacterForIdentifier(
+                          identifier,
+                          projectMapping,
+                          globalCharacters
+                        );
+                        return character?.imageData ? (
+                          <img
+                            key={identifier}
+                            src={character.imageData}
+                            alt={`角色 ${identifier}`}
+                            className='h-6 w-auto rounded border object-contain'
+                            title={character.name || `角色 ${identifier}`}
+                          />
+                        ) : (
+                          <Badge
+                            key={identifier}
+                            variant='outline'
+                            className='text-[10px]'
+                          >
+                            {ref}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Badge
+                      variant='secondary'
+                      className='mt-1 w-fit text-[10px]'
+                    >
+                      文生图
+                    </Badge>
+                  )}
+                </CardHeader>
+                <CardContent className='flex flex-1 flex-col space-y-3'>
+                  {/* 提示词编辑区域 */}
+                  <div className='space-y-1'>
+                    {editingPromptIndex === index ? (
+                      <div className='space-y-2'>
+                        <Textarea
+                          value={editedPrompt}
+                          onChange={(e) => setEditedPrompt(e.target.value)}
+                          className='min-h-[60px] resize-none text-xs'
+                          placeholder='输入提示词...'
+                        />
+                        <div className='flex gap-1'>
+                          <Button
+                            size='sm'
+                            className='h-6 flex-1 gap-1 text-xs'
+                            onClick={() => handleSavePrompt(index)}
+                            disabled={savingPrompt}
+                          >
+                            {savingPrompt ? (
+                              <Loader2 className='h-3 w-3 animate-spin' />
+                            ) : (
+                              <Save className='h-3 w-3' />
+                            )}
+                            保存
+                          </Button>
+                          <Button
+                            size='sm'
+                            variant='outline'
+                            className='h-6 text-xs'
+                            onClick={handleCancelEditPrompt}
+                            disabled={savingPrompt}
+                          >
+                            取消
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className='flex items-start gap-1'>
+                        <p className='text-muted-foreground line-clamp-3 flex-1 text-xs'>
+                          {storyboard.text_to_image || '暂无提示词'}
+                        </p>
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          className='h-5 w-5 flex-shrink-0 p-0'
+                          onClick={() =>
+                            handleStartEditPrompt(
+                              index,
+                              storyboard.text_to_image || ''
+                            )
+                          }
+                        >
+                          <Pencil className='h-3 w-3' />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 角色选择按钮 */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        className='h-7 w-full gap-1 text-xs'
+                      >
+                        <Users className='h-3 w-3' />
+                        选择角色
+                        {storyboard.character_refs &&
+                          storyboard.character_refs.length > 0 && (
+                            <Badge
+                              variant='secondary'
+                              className='ml-1 h-4 px-1 text-[10px]'
+                            >
+                              {storyboard.character_refs.length}
+                            </Badge>
+                          )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className='w-64' align='center'>
+                      <div className='space-y-3'>
+                        <div className='text-sm font-medium'>选择角色引用</div>
+                        <p className='text-muted-foreground text-xs'>
+                          选择角色后将使用「图文生图」模式（最多3个）
+                        </p>
+                        {getValidCharacterMappings().length === 0 ? (
+                          <p className='text-muted-foreground py-2 text-xs'>
+                            暂无可用角色，请先在Settings页面配置角色参考图
+                          </p>
+                        ) : (
+                          <div className='space-y-2'>
+                            {getValidCharacterMappings().map(
+                              ({ identifier, character }) => {
+                                const displayRef = `角色${identifier}`;
+                                const currentRefs =
+                                  storyboard.character_refs || [];
+                                const isChecked = currentRefs.some(
+                                  (ref) => extractIdentifier(ref) === identifier
+                                );
+                                const canSelect =
+                                  isChecked || currentRefs.length < 3;
+
+                                return (
+                                  <div
+                                    key={identifier}
+                                    className='flex items-center gap-2'
+                                  >
+                                    <Checkbox
+                                      id={`char-${index}-${identifier}`}
+                                      checked={isChecked}
+                                      disabled={!canSelect}
+                                      onCheckedChange={(checked) => {
+                                        const newRefs = checked
+                                          ? [...currentRefs, displayRef]
+                                          : currentRefs.filter(
+                                              (r) =>
+                                                extractIdentifier(r) !==
+                                                identifier
+                                            );
+                                        handleUpdateCharacterRefs(
+                                          index,
+                                          newRefs
+                                        );
+                                      }}
+                                    />
+                                    <Label
+                                      htmlFor={`char-${index}-${identifier}`}
+                                      className='flex cursor-pointer items-center gap-2 text-sm'
+                                    >
+                                      {character.imageData && (
+                                        <img
+                                          src={character.imageData}
+                                          alt={identifier}
+                                          className='h-6 w-6 rounded object-cover'
+                                        />
+                                      )}
+                                      <span>角色 {identifier}</span>
+                                    </Label>
+                                  </div>
+                                );
+                              }
+                            )}
+                          </div>
+                        )}
+                        {storyboard.character_refs &&
+                          storyboard.character_refs.length > 0 && (
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              className='w-full text-xs'
+                              onClick={() =>
+                                handleUpdateCharacterRefs(index, [])
+                              }
+                            >
+                              清除所有角色
+                            </Button>
+                          )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* 图片网格 - 固定高度，宽度自适应 */}
+                  <div className='mt-auto'>
+                    {storyboard.images.length > 0 ? (
+                      <div className='flex flex-wrap gap-1'>
+                        {storyboard.images.map((image, imgIndex) => (
+                          <div
+                            key={imgIndex}
+                            className={`group relative h-20 cursor-pointer overflow-hidden rounded border-2 ${
+                              storyboard.selected_image_index === imgIndex
+                                ? 'border-primary'
+                                : 'border-transparent hover:border-gray-300'
+                            }`}
+                            onClick={() => handleSelectImage(index, imgIndex)}
+                          >
+                            <img
+                              src={getProxiedImageUrl(image.url)}
+                              alt={`图片 ${imgIndex + 1}`}
+                              className='h-full w-auto object-contain'
+                            />
+                            {storyboard.selected_image_index === imgIndex && (
+                              <div className='bg-primary absolute top-0.5 right-0.5 rounded-full p-0.5'>
+                                <CheckCircle className='h-2.5 w-2.5 text-white' />
+                              </div>
+                            )}
+                            {/* 悬停时显示预览按钮 */}
+                            <div className='absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100'>
+                              <button
+                                onClick={(e) => handlePreviewImage(image, e)}
+                                className='rounded-full bg-white/90 p-1.5 transition-colors hover:bg-white'
+                                aria-label='预览图片'
+                              >
+                                <ZoomIn className='h-3 w-3 text-gray-800' />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {/* 重新生成按钮 */}
+                        <div
+                          className='bg-muted flex h-20 w-20 cursor-pointer items-center justify-center rounded border-2 border-dashed hover:bg-gray-100'
+                          onClick={() => handleGenerateImage(index)}
+                        >
+                          {generatingImageIndices.has(index) ? (
+                            <Loader2 className='h-4 w-4 animate-spin' />
+                          ) : (
+                            <RefreshCw className='text-muted-foreground h-4 w-4' />
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => handleGenerateImage(index)}
+                        disabled={generatingImageIndices.has(index)}
+                        className='h-8 w-full text-xs'
+                      >
+                        {generatingImageIndices.has(index) ? (
+                          <Loader2 className='mr-1 h-3 w-3 animate-spin' />
+                        ) : (
+                          <Image className='mr-1 h-3 w-3' />
+                        )}
+                        生成图片
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
 
           {/* Bottom Actions */}
           <div className='flex items-center justify-between border-t pt-4'>
-            <p className='text-muted-foreground text-sm'>
-              已选择: {imageSelectedCount}/{totalCount} 个分镜
-            </p>
-            <div className='flex gap-2'>
-              <Button
-                variant='outline'
-                onClick={() => {
-                  const unselectedIds = prompts
-                    .filter(
-                      (p) =>
-                        !getImagesForPrompt(p.storyboard_index).some(
-                          (img) => img.is_selected
-                        )
-                    )
-                    .map((p) => p.id);
-                  if (unselectedIds.length > 0) {
-                    handleStartImageGeneration(unselectedIds);
-                  }
-                }}
-                disabled={
-                  isGeneratingImages || imageSelectedCount === totalCount
-                }
-              >
-                批量生成剩余
-              </Button>
-              <Button
-                onClick={() => setActiveTab('video')}
-                disabled={imageSelectedCount === 0}
-              >
-                继续下一步: 视频生成
-              </Button>
-            </div>
+            <Button
+              variant='outline'
+              onClick={() =>
+                router.push(`/dashboard/youtube/prompts/${projectId}`)
+              }
+              className='gap-1'
+            >
+              <ChevronLeft className='h-4 w-4' />
+              返回上一步: 提示词编辑
+            </Button>
+            <Button
+              onClick={() => setActiveTab('video')}
+              disabled={imageProgress.selected === 0}
+              className='gap-1'
+            >
+              继续下一步: 视频生成
+              <ChevronRight className='h-4 w-4' />
+            </Button>
           </div>
         </TabsContent>
 
         {/* Video Generation Tab */}
         <TabsContent value='video' className='space-y-6'>
-          {/* Progress Section */}
+          {/* Progress */}
           <div className='bg-card space-y-4 rounded-lg border p-4'>
             <div className='flex items-center justify-between'>
-              <div className='space-y-1'>
+              <div>
                 <p className='text-sm font-medium'>生成进度</p>
                 <p className='text-muted-foreground text-xs'>
-                  已选择: {videoSelectedCount}/{totalCount} 个分镜
+                  已选择: {videoProgress.selected}/{videoProgress.total} 个分镜
+                  {generatingVideoIndices.size > 0 &&
+                    ` (${generatingVideoIndices.size} 个生成中)`}
                 </p>
               </div>
-
-              {/* Task Controls */}
-              <div className='flex items-center gap-2'>
-                {videoTask && isTaskActive(videoTask.status) ? (
-                  <>
-                    {videoTask.status === 'running' ? (
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        onClick={handlePauseVideoTask}
-                        className='gap-1'
-                      >
-                        <Pause className='h-4 w-4' />
-                        暂停
-                      </Button>
-                    ) : videoTask.status === 'paused' ? (
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        onClick={handleResumeVideoTask}
-                        className='gap-1'
-                      >
-                        <Play className='h-4 w-4' />
-                        继续
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={handleCancelVideoTask}
-                      className='gap-1'
-                    >
-                      <X className='h-4 w-4' />
-                      取消
-                    </Button>
-                  </>
+              <Button
+                size='sm'
+                onClick={handleGenerateAllVideos}
+                disabled={
+                  generatingVideoIndices.size > 0 ||
+                  imageProgress.selected === 0
+                }
+                className='gap-1'
+              >
+                {generatingVideoIndices.size > 0 ? (
+                  <Loader2 className='h-4 w-4 animate-spin' />
                 ) : (
-                  <Button
-                    size='sm'
-                    onClick={() => handleStartVideoGeneration()}
-                    disabled={isGeneratingVideos || imageSelectedCount === 0}
-                    className='gap-1'
-                  >
-                    {isGeneratingVideos ? (
-                      <Loader2 className='h-4 w-4 animate-spin' />
-                    ) : (
-                      <RefreshCw className='h-4 w-4' />
-                    )}
-                    批量生成
-                  </Button>
+                  <RefreshCw className='h-4 w-4' />
                 )}
-              </div>
+                批量生成
+              </Button>
             </div>
-
-            {/* Progress Bar */}
-            {videoTask && (
-              <div className='space-y-2'>
-                <Progress value={videoTask.progress} className='h-2' />
-                <div className='text-muted-foreground flex justify-between text-xs'>
-                  <span>
-                    {videoTask.completed_items}/{videoTask.total_items} 完成
-                    {videoTask.failed_items > 0 && (
-                      <span className='text-destructive ml-2'>
-                        {videoTask.failed_items} 失败
-                      </span>
-                    )}
-                  </span>
-                  <span>{videoTask.progress}%</span>
-                </div>
-              </div>
-            )}
+            <Progress
+              value={
+                (videoProgress.selected / Math.max(videoProgress.total, 1)) *
+                100
+              }
+              className='h-2'
+            />
           </div>
 
           {/* No selected images warning */}
-          {imageSelectedCount === 0 && (
+          {imageProgress.selected === 0 && (
             <div className='bg-muted/50 flex h-32 flex-col items-center justify-center gap-2 rounded-lg border'>
               <Image className='text-muted-foreground h-8 w-8' />
               <p className='text-muted-foreground'>
@@ -777,25 +1022,186 @@ export default function GeneratePage({ params }: GeneratePageProps) {
             </div>
           )}
 
-          {/* Storyboard Video Cards */}
-          {imageSelectedCount > 0 && (
-            <div className='space-y-4'>
-              {prompts.map((prompt) => {
-                const sourceImage = getSelectedImageForPrompt(
-                  prompt.storyboard_index
-                );
+          {/* Storyboard Video Cards - 4列网格布局 */}
+          {imageProgress.selected > 0 && (
+            <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4'>
+              {storyboards.map((storyboard, index) => {
+                const hasSelectedImage =
+                  storyboard.selected_image_index !== null;
+                const selectedImage = hasSelectedImage
+                  ? storyboard.images[storyboard.selected_image_index!]
+                  : null;
+
                 return (
-                  <VideoGenerationCard
-                    key={prompt.id}
-                    prompt={prompt}
-                    sourceImage={sourceImage}
-                    videos={getVideosForPrompt(prompt.storyboard_index)}
-                    status={getVideoPromptStatus(prompt.storyboard_index)}
-                    onSelectVideo={handleSelectVideo}
-                    onRegenerate={() => handleRegenerateVideo(prompt.id)}
-                    onPlayVideo={handlePlayVideo}
-                    isGenerating={isGeneratingVideos}
-                  />
+                  <Card
+                    key={index}
+                    className={`flex flex-col ${!hasSelectedImage ? 'opacity-50' : ''}`}
+                  >
+                    <CardHeader className='pb-2'>
+                      <div className='flex items-center justify-between'>
+                        <CardTitle className='text-sm'>
+                          分镜 #{storyboard.index + 1}
+                        </CardTitle>
+                        <div className='flex items-center gap-1'>
+                          {storyboard.selected_video_index !== null && (
+                            <Badge variant='default' className='gap-1 text-xs'>
+                              <CheckCircle className='h-3 w-3' />
+                              已选
+                            </Badge>
+                          )}
+                          {!hasSelectedImage && (
+                            <Badge variant='destructive' className='text-xs'>
+                              缺图
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className='flex flex-1 flex-col space-y-3'>
+                      {/* 源图片 */}
+                      {selectedImage && (
+                        <div className='h-12 flex-shrink-0 overflow-hidden rounded'>
+                          <img
+                            src={getProxiedImageUrl(selectedImage.url)}
+                            alt='源图片'
+                            className='h-full w-auto object-contain'
+                          />
+                        </div>
+                      )}
+
+                      {/* 视频提示词编辑区域 */}
+                      <div className='space-y-1'>
+                        {editingVideoPromptIndex === index ? (
+                          <div className='space-y-2'>
+                            <Textarea
+                              value={editedVideoPrompt}
+                              onChange={(e) =>
+                                setEditedVideoPrompt(e.target.value)
+                              }
+                              className='min-h-[60px] resize-none text-xs'
+                              placeholder='输入视频提示词...'
+                            />
+                            <div className='flex gap-1'>
+                              <Button
+                                size='sm'
+                                className='h-6 flex-1 gap-1 text-xs'
+                                onClick={() => handleSaveVideoPrompt(index)}
+                                disabled={savingVideoPrompt}
+                              >
+                                {savingVideoPrompt ? (
+                                  <Loader2 className='h-3 w-3 animate-spin' />
+                                ) : (
+                                  <Save className='h-3 w-3' />
+                                )}
+                                保存
+                              </Button>
+                              <Button
+                                size='sm'
+                                variant='outline'
+                                className='h-6 text-xs'
+                                onClick={handleCancelEditVideoPrompt}
+                                disabled={savingVideoPrompt}
+                              >
+                                取消
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className='flex items-start gap-1'>
+                            <p className='text-muted-foreground line-clamp-3 flex-1 text-xs'>
+                              {storyboard.image_to_video || '暂无视频提示词'}
+                            </p>
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              className='h-5 w-5 flex-shrink-0 p-0'
+                              onClick={() =>
+                                handleStartEditVideoPrompt(
+                                  index,
+                                  storyboard.image_to_video || ''
+                                )
+                              }
+                            >
+                              <Pencil className='h-3 w-3' />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 视频网格 - 固定高度，宽度自适应 */}
+                      <div className='mt-auto'>
+                        {hasSelectedImage && storyboard.videos.length > 0 ? (
+                          <div className='flex flex-wrap gap-1'>
+                            {storyboard.videos.map((video, vidIndex) => (
+                              <div
+                                key={vidIndex}
+                                className={`group relative h-20 cursor-pointer overflow-hidden rounded border-2 ${
+                                  storyboard.selected_video_index === vidIndex
+                                    ? 'border-primary'
+                                    : 'border-transparent hover:border-gray-300'
+                                }`}
+                                onClick={() =>
+                                  handleSelectVideo(index, vidIndex)
+                                }
+                              >
+                                <video
+                                  src={getProxiedVideoUrl(video.url)}
+                                  className='h-full w-auto object-contain'
+                                />
+                                <div className='absolute inset-0 flex items-center justify-center bg-black/30'>
+                                  <Play className='h-4 w-4 text-white' />
+                                </div>
+                                {storyboard.selected_video_index ===
+                                  vidIndex && (
+                                  <div className='bg-primary absolute top-0.5 right-0.5 rounded-full p-0.5'>
+                                    <CheckCircle className='h-2.5 w-2.5 text-white' />
+                                  </div>
+                                )}
+                                {/* 悬停时显示播放按钮 */}
+                                <div className='absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100'>
+                                  <button
+                                    onClick={(e) => handlePlayVideo(video, e)}
+                                    className='rounded-full bg-white/90 p-2 transition-colors hover:bg-white'
+                                    aria-label='播放视频'
+                                  >
+                                    <Play className='h-4 w-4 fill-gray-800 text-gray-800' />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                            {/* 重新生成按钮 */}
+                            <div
+                              className='bg-muted flex h-20 w-28 cursor-pointer items-center justify-center rounded border-2 border-dashed hover:bg-gray-100'
+                              onClick={() => handleGenerateVideo(index)}
+                            >
+                              {generatingVideoIndices.has(index) ? (
+                                <Loader2 className='h-4 w-4 animate-spin' />
+                              ) : (
+                                <RefreshCw className='text-muted-foreground h-4 w-4' />
+                              )}
+                            </div>
+                          </div>
+                        ) : hasSelectedImage ? (
+                          <Button
+                            onClick={() => handleGenerateVideo(index)}
+                            disabled={generatingVideoIndices.has(index)}
+                            className='h-8 w-full text-xs'
+                          >
+                            {generatingVideoIndices.has(index) ? (
+                              <Loader2 className='mr-1 h-3 w-3 animate-spin' />
+                            ) : (
+                              <Video className='mr-1 h-3 w-3' />
+                            )}
+                            生成视频
+                          </Button>
+                        ) : (
+                          <p className='text-muted-foreground text-center text-xs'>
+                            请先选择源图片
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
                 );
               })}
             </div>
@@ -803,83 +1209,62 @@ export default function GeneratePage({ params }: GeneratePageProps) {
 
           {/* Bottom Actions */}
           <div className='flex items-center justify-between border-t pt-4'>
-            <p className='text-muted-foreground text-sm'>
-              已选择: {videoSelectedCount}/{totalCount} 个视频
-            </p>
-            <div className='flex gap-2'>
-              <Button
-                variant='outline'
-                onClick={() => {
-                  const unselectedIds = prompts
-                    .filter((p) => {
-                      const hasSourceImage =
-                        getSelectedImageForPrompt(p.storyboard_index) !== null;
-                      const hasSelectedVideo = getVideosForPrompt(
-                        p.storyboard_index
-                      ).some((vid) => vid.is_selected);
-                      return hasSourceImage && !hasSelectedVideo;
-                    })
-                    .map((p) => p.id);
-                  if (unselectedIds.length > 0) {
-                    handleStartVideoGeneration(unselectedIds);
-                  }
-                }}
-                disabled={
-                  isGeneratingVideos ||
-                  videoSelectedCount === imageSelectedCount
-                }
-              >
-                批量生成剩余
-              </Button>
-              <Button
-                onClick={handleDownloadVideos}
-                disabled={isDownloading || videoSelectedCount === 0}
-                className='gap-1'
-              >
-                {isDownloading ? (
-                  <>
-                    <Loader2 className='h-4 w-4 animate-spin' />
-                    下载中 {downloadProgress}%
-                  </>
-                ) : (
-                  <>
-                    <Download className='h-4 w-4' />
-                    下载所有选中视频
-                  </>
-                )}
-              </Button>
-            </div>
+            <Button
+              variant='outline'
+              onClick={() => setActiveTab('image')}
+              className='gap-1'
+            >
+              <ChevronLeft className='h-4 w-4' />
+              返回上一步: 图片生成
+            </Button>
+            <Button disabled={videoProgress.selected === 0} className='gap-1'>
+              <Download className='h-4 w-4' />
+              下载所有选中视频
+            </Button>
           </div>
-
-          {/* Download Progress */}
-          {isDownloading && (
-            <div className='bg-card space-y-2 rounded-lg border p-4'>
-              <div className='flex items-center gap-2'>
-                <Download className='text-primary h-4 w-4' />
-                <span className='text-sm font-medium'>正在打包下载...</span>
-              </div>
-              <Progress value={downloadProgress} className='h-2' />
-              <p className='text-muted-foreground text-xs'>
-                {downloadProgress === 100 ? (
-                  <span className='flex items-center gap-1 text-green-600'>
-                    <CheckCircle className='h-3 w-3' />
-                    下载完成
-                  </span>
-                ) : (
-                  `正在准备 ${videoSelectedCount} 个视频文件...`
-                )}
-              </p>
-            </div>
-          )}
         </TabsContent>
       </Tabs>
 
-      {/* Video Player Dialog */}
+      {/* 图片预览对话框 - 自适应尺寸 */}
+      <Dialog open={previewImageOpen} onOpenChange={setPreviewImageOpen}>
+        <DialogContent className='flex max-h-[95vh] max-w-[95vw] flex-col p-0'>
+          <DialogHeader className='flex-shrink-0 p-4 pb-2'>
+            <DialogTitle>图片预览</DialogTitle>
+          </DialogHeader>
+          {previewImage && (
+            <>
+              <div className='flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black/5 p-4'>
+                <img
+                  src={getProxiedImageUrl(previewImage.url)}
+                  alt='图片预览'
+                  className='max-h-[calc(95vh-120px)] max-w-full object-contain'
+                  onLoad={handleImageLoad}
+                />
+              </div>
+              <div className='text-muted-foreground flex flex-shrink-0 items-center justify-between border-t p-4 text-sm'>
+                <span>
+                  类型:{' '}
+                  {previewImage.generation_type === 'text_to_image'
+                    ? '文生图'
+                    : '图文生图'}
+                </span>
+                {imageDimensions && (
+                  <span>
+                    尺寸: {imageDimensions.width} × {imageDimensions.height}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 视频播放器 */}
       <VideoPlayer
-        video={playingVideo}
-        open={isPlayerOpen}
-        onOpenChange={setIsPlayerOpen}
-        title={playingVideo ? `分镜视频预览` : '视频预览'}
+        video={previewVideo}
+        open={previewVideoOpen}
+        onOpenChange={setPreviewVideoOpen}
+        title='视频预览'
       />
     </div>
   );

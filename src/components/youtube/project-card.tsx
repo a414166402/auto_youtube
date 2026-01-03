@@ -13,13 +13,14 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { AlertModal } from '@/components/modal/alert-modal';
-import type { VideoProject, ProjectStatus } from '@/types/youtube';
+import type { ProjectListItem, ProjectStatus } from '@/types/youtube';
 
 interface ProjectCardProps {
-  project: VideoProject;
+  project: ProjectListItem;
   onDelete: (id: string) => Promise<void>;
 }
 
+// 与后端ProjectStatus枚举对齐
 const statusConfig: Record<
   ProjectStatus,
   {
@@ -28,15 +29,10 @@ const statusConfig: Record<
   }
 > = {
   created: { label: '已创建', variant: 'secondary' },
-  downloading: { label: '下载中', variant: 'default' },
-  downloaded: { label: '已下载', variant: 'secondary' },
-  parsing: { label: '解析中', variant: 'default' },
-  parsed: { label: '已解析', variant: 'secondary' },
-  generating_prompts: { label: '生成提示词', variant: 'default' },
-  prompts_ready: { label: '提示词就绪', variant: 'secondary' },
-  generating_images: { label: '生成图片', variant: 'default' },
+  prompts_ready: { label: '提示词就绪', variant: 'default' },
+  images_partial: { label: '图片生成中', variant: 'default' },
   images_ready: { label: '图片就绪', variant: 'secondary' },
-  generating_videos: { label: '生成视频', variant: 'default' },
+  videos_partial: { label: '视频生成中', variant: 'default' },
   completed: { label: '已完成', variant: 'success' },
   failed: { label: '失败', variant: 'destructive' }
 };
@@ -69,17 +65,9 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
     <>
       <Card className='group cursor-pointer overflow-hidden transition-shadow hover:shadow-md'>
         <div className='bg-muted relative aspect-video' onClick={handleView}>
-          {project.thumbnail_url ? (
-            <img
-              src={project.thumbnail_url}
-              alt={project.name}
-              className='h-full w-full object-cover'
-            />
-          ) : (
-            <div className='flex h-full w-full items-center justify-center'>
-              <Video className='text-muted-foreground h-12 w-12' />
-            </div>
-          )}
+          <div className='flex h-full w-full items-center justify-center'>
+            <Video className='text-muted-foreground h-12 w-12' />
+          </div>
           <div className='absolute top-2 right-2'>
             <Badge variant={status.variant}>{status.label}</Badge>
           </div>
@@ -114,15 +102,9 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
         <CardContent className='pt-0 pb-3'>
           <div className='text-muted-foreground space-y-0.5 text-sm'>
             <p>
-              源视频:{' '}
-              {project.source_storyboard_count !== undefined
-                ? `${project.source_storyboard_count} 个分镜`
-                : '--'}
-            </p>
-            <p>
-              微创新:{' '}
-              {project.innovation_storyboard_count !== undefined
-                ? `${project.innovation_storyboard_count} 个分镜`
+              分镜数:{' '}
+              {project.storyboard_count > 0
+                ? `${project.storyboard_count} 个`
                 : '--'}
             </p>
           </div>

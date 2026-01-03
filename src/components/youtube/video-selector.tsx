@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Check, Play, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getProxiedVideoUrl } from '@/lib/utils/media-proxy';
 import type { GeneratedVideo } from '@/types/youtube';
 
 export interface VideoSelectorProps {
@@ -67,7 +68,7 @@ export function VideoSelector({
     >
       {/* Video thumbnail - using poster or first frame */}
       <video
-        src={video.video_url}
+        src={getProxiedVideoUrl(video.url)}
         className='h-full w-full object-cover'
         muted
         playsInline

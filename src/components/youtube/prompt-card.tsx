@@ -1,28 +1,58 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Pencil, History, User } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import type { Prompt, CharacterMapping } from '@/types/youtube';
+import {
+  loadGlobalCharactersAsync,
+  loadProjectMapping,
+  DEFAULT_GLOBAL_CHARACTERS,
+  type GlobalCharacter,
+  type ProjectCharacterMapping
+} from '@/lib/character-config';
+import type { Prompt } from '@/types/youtube';
 
 export interface PromptCardProps {
   prompt: Prompt;
-  characterMappings?: CharacterMapping[]; // 可用的角色映射列表
+  projectId: string;
   onEdit: (prompt: Prompt) => void;
   onViewHistory: (prompt: Prompt) => void;
 }
 
 export function PromptCard({
   prompt,
-  characterMappings = [],
+  projectId,
   onEdit,
   onViewHistory
 }: PromptCardProps) {
+  // 从全局配置和项目映射加载角色
+  const [globalCharacters, setGlobalCharacters] = useState<GlobalCharacter[]>(
+    DEFAULT_GLOBAL_CHARACTERS
+  );
+  const [projectMapping, setProjectMapping] = useState<ProjectCharacterMapping>(
+    {}
+  );
+
+  useEffect(() => {
+    loadGlobalCharactersAsync().then(setGlobalCharacters);
+    setProjectMapping(loadProjectMapping(projectId));
+  }, [projectId]);
+
   // 获取角色引用的显示名称
   const getCharacterDisplayName = (identifier: string): string => {
-    const mapping = characterMappings.find((m) => m.identifier === identifier);
-    return mapping?.name ? `${identifier}: ${mapping.name}` : identifier;
+    const globalId = projectMapping[identifier];
+    if (!globalId) return identifier;
+    const character = globalCharacters.find((c) => c.id === globalId);
+    return character?.name ? `${identifier}: ${character.name}` : identifier;
+  };
+
+  // 获取角色配置
+  const getCharacterConfig = (identifier: string): GlobalCharacter | null => {
+    const globalId = projectMapping[identifier];
+    if (!globalId) return null;
+    return globalCharacters.find((c) => c.id === globalId) || null;
   };
 
   return (
@@ -90,12 +120,22 @@ export function PromptCard({
             <div className='flex flex-wrap items-center gap-2'>
               <span className='text-muted-foreground text-xs'>角色引用:</span>
               <div className='flex flex-wrap gap-1'>
-                {prompt.character_refs.map((ref) => (
-                  <Badge key={ref} variant='outline' className='gap-1'>
-                    <User className='h-3 w-3' />
-                    {getCharacterDisplayName(ref)}
-                  </Badge>
-                ))}
+                {prompt.character_refs.map((ref) => {
+                  const config = getCharacterConfig(ref);
+                  return (
+                    <Badge key={ref} variant='outline' className='gap-1'>
+                      {config?.imageData && (
+                        <img
+                          src={config.imageData}
+                          alt={ref}
+                          className='h-4 w-4 rounded object-cover'
+                        />
+                      )}
+                      <User className='h-3 w-3' />
+                      {getCharacterDisplayName(ref)}
+                    </Badge>
+                  );
+                })}
               </div>
             </div>
           )}

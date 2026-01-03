@@ -2,30 +2,18 @@
 
 import { use, useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  ArrowLeft,
-  Download,
-  FileText,
-  Image,
-  Video,
-  Wand2,
-  Loader2
-} from 'lucide-react';
+import { ArrowLeft, Wand2, Image, Video, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { WorkflowStep } from '@/components/youtube/workflow-step';
 import { useToast } from '@/components/ui/use-toast';
-import {
-  getProject,
-  startDownload,
-  getDownloadStatus,
-  getTask
-} from '@/lib/api/youtube';
+import { getProject, generatePrompts, getStatusText } from '@/lib/api/youtube';
 import type {
-  VideoProject,
+  ProjectResponse,
   ProjectStatus,
-  WorkflowStepStatus,
-  GenerationTask
+  WorkflowStepStatus
 } from '@/types/youtube';
 
 interface ProjectDetailPageProps {
@@ -39,11 +27,11 @@ interface WorkflowStepConfig {
   id: string;
   title: string;
   icon: React.ReactNode;
-  getStatus: (project: VideoProject) => WorkflowStepStatus;
-  getDescription: (project: VideoProject) => string;
-  getActionLabel: (project: VideoProject) => string | undefined;
-  getActionUrl?: (project: VideoProject) => string | undefined;
-  canTriggerAction?: (project: VideoProject) => boolean;
+  getStatus: (project: ProjectResponse) => WorkflowStepStatus;
+  getDescription: (project: ProjectResponse) => string;
+  getActionLabel: (project: ProjectResponse) => string | undefined;
+  getActionUrl?: (project: ProjectResponse) => string | undefined;
+  canTriggerAction?: (project: ProjectResponse) => boolean;
   note?: string;
 }
 
@@ -59,17 +47,13 @@ function getStepStatusFromProjectStatus(
   if (stepStatuses.includes(projectStatus)) {
     return 'in_progress';
   }
+  // 与后端状态枚举对齐
   const allStatuses: ProjectStatus[] = [
     'created',
-    'downloading',
-    'downloaded',
-    'parsing',
-    'parsed',
-    'generating_prompts',
     'prompts_ready',
-    'generating_images',
+    'images_partial',
     'images_ready',
-    'generating_videos',
+    'videos_partial',
     'completed',
     'failed'
   ];
@@ -86,29 +70,17 @@ function getStepStatusFromProjectStatus(
 }
 
 // 计算整体工作流进度
-function calculateOverallProgress(project: VideoProject): number {
+function calculateOverallProgress(project: ProjectResponse): number {
   const statusProgress: Record<ProjectStatus, number> = {
     created: 0,
-    downloading: 10,
-    downloaded: 20,
-    parsing: 30,
-    parsed: 40,
-    generating_prompts: 50,
-    prompts_ready: 60,
-    generating_images: 70,
-    images_ready: 80,
-    generating_videos: 90,
+    prompts_ready: 33,
+    images_partial: 50,
+    images_ready: 66,
+    videos_partial: 83,
     completed: 100,
     failed: 0
   };
-  return statusProgress[project.status] || 0;
-}
-
-function formatDuration(seconds?: number): string {
-  if (!seconds) return '--:--';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  return statusProgress[project.data.status] || 0;
 }
 
 export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
@@ -116,11 +88,11 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const router = useRouter();
   const { toast } = useToast();
 
-  const [project, setProject] = useState<VideoProject | null>(null);
+  const [project, setProject] = useState<ProjectResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [downloadingVideo, setDownloadingVideo] = useState(false);
-  const [downloadTask, setDownloadTask] = useState<GenerationTask | null>(null);
+  const [generatingPrompts, setGeneratingPrompts] = useState(false);
+  const [instruction, setInstruction] = useState('不需要改编');
 
   const loadProject = useCallback(async () => {
     try {
@@ -138,232 +110,72 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     loadProject();
   }, [loadProject]);
 
-  useEffect(() => {
-    if (
-      !downloadTask ||
-      downloadTask.status === 'completed' ||
-      downloadTask.status === 'failed'
-    ) {
-      return;
-    }
-
-    const interval = setInterval(async () => {
-      try {
-        const task = await getTask(downloadTask.id);
-        setDownloadTask(task);
-
-        if (task.status === 'completed') {
-          toast({
-            title: '下载完成',
-            description: '视频下载成功，正在解析分镜...'
-          });
-          setDownloadingVideo(false);
-          loadProject();
-        } else if (task.status === 'failed') {
-          toast({
-            title: '下载失败',
-            description: task.error_message || '视频下载失败，请重试',
-            variant: 'destructive'
-          });
-          setDownloadingVideo(false);
-        }
-      } catch (err) {
-        console.error('获取下载状态失败:', err);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [downloadTask, toast, loadProject]);
-
-  const handleStartDownload = async () => {
+  // 生成提示词
+  const handleGeneratePrompts = async () => {
     if (!project) return;
 
-    setDownloadingVideo(true);
+    setGeneratingPrompts(true);
     try {
-      await startDownload(project.id);
-      toast({
-        title: '开始下载',
-        description: '视频下载已开始，请稍候...'
-      });
-
-      const task = await getDownloadStatus(project.id);
-      setDownloadTask(task);
-      loadProject();
+      const result = await generatePrompts(project.id, { instruction });
+      if (result.success) {
+        toast({
+          title: '生成成功',
+          description: `已生成 ${result.storyboard_count} 个分镜提示词`
+        });
+        loadProject();
+      } else {
+        toast({
+          title: '生成失败',
+          description: result.error || '生成提示词失败',
+          variant: 'destructive'
+        });
+      }
     } catch (err) {
       toast({
-        title: '下载失败',
-        description: err instanceof Error ? err.message : '启动下载失败',
+        title: '生成失败',
+        description: err instanceof Error ? err.message : '生成提示词失败',
         variant: 'destructive'
       });
-      setDownloadingVideo(false);
+    } finally {
+      setGeneratingPrompts(false);
     }
   };
 
-  // 工作流步骤配置 - 5个步骤（移除角色映射步骤）
+  // 工作流步骤配置 - 3个步骤（简化版）
   const workflowSteps: WorkflowStepConfig[] = [
     {
-      id: 'download',
-      title: '视频下载',
-      icon: <Download className='h-4 w-4' />,
-      getStatus: (p) =>
-        getStepStatusFromProjectStatus(
-          p.status,
-          ['downloading'],
-          [
-            'downloaded',
-            'parsing',
-            'parsed',
-            'generating_prompts',
-            'prompts_ready',
-            'generating_images',
-            'images_ready',
-            'generating_videos',
-            'completed'
-          ]
-        ),
-      getDescription: (p) => {
-        if (p.status === 'created') return `YouTube URL: ${p.youtube_url}`;
-        if (p.status === 'downloading') return '正在下载视频...';
-        if (p.video_path) return `视频时长: ${formatDuration(p.duration)}`;
-        return `YouTube URL: ${p.youtube_url}`;
-      },
-      getActionLabel: (p) => {
-        if (p.status === 'created') return '开始下载';
-        if (p.status === 'downloading') return '下载中...';
-        return undefined;
-      },
-      canTriggerAction: (p) => p.status === 'created'
-    },
-    {
-      id: 'storyboard',
-      title: '分镜解析（可选，仅供参考）',
-      icon: <FileText className='h-4 w-4' />,
-      getStatus: (p) =>
-        getStepStatusFromProjectStatus(
-          p.status,
-          ['parsing'],
-          [
-            'parsed',
-            'generating_prompts',
-            'prompts_ready',
-            'generating_images',
-            'images_ready',
-            'generating_videos',
-            'completed'
-          ]
-        ),
-      getDescription: (p) => {
-        if (p.source_storyboard_count)
-          return `已解析 ${p.source_storyboard_count} 个源视频分镜`;
-        if (p.status === 'parsing') return '正在解析分镜...';
-        return '等待视频下载完成';
-      },
-      getActionLabel: (p) => {
-        const status = getStepStatusFromProjectStatus(
-          p.status,
-          ['parsing'],
-          [
-            'parsed',
-            'generating_prompts',
-            'prompts_ready',
-            'generating_images',
-            'images_ready',
-            'generating_videos',
-            'completed'
-          ]
-        );
-        if (status === 'completed') return '查看/编辑分镜';
-        return undefined;
-      },
-      getActionUrl: (p) => {
-        const status = getStepStatusFromProjectStatus(
-          p.status,
-          ['parsing'],
-          [
-            'parsed',
-            'generating_prompts',
-            'prompts_ready',
-            'generating_images',
-            'images_ready',
-            'generating_videos',
-            'completed'
-          ]
-        );
-        if (status === 'completed')
-          return `/dashboard/youtube/storyboard/${p.id}`;
-        return undefined;
-      },
-      note: '源视频分镜仅供参考，不影响后续流程'
-    },
-    {
       id: 'prompts',
-      title: '提示词编辑',
+      title: '提示词生成',
       icon: <Wand2 className='h-4 w-4' />,
       getStatus: (p) =>
         getStepStatusFromProjectStatus(
-          p.status,
-          ['generating_prompts'],
+          p.data.status,
+          [],
           [
             'prompts_ready',
-            'generating_images',
+            'images_partial',
             'images_ready',
-            'generating_videos',
+            'videos_partial',
             'completed'
           ]
         ),
       getDescription: (p) => {
-        if (p.status === 'generating_prompts') return '正在生成提示词...';
-        if (
-          [
-            'prompts_ready',
-            'generating_images',
-            'images_ready',
-            'generating_videos',
-            'completed'
-          ].includes(p.status)
-        ) {
-          const count = p.innovation_storyboard_count || 0;
-          return `已生成 ${count} 个微创新分镜提示词 | 版本: ${p.prompt_version || 'V1'}`;
-        }
-        return '等待分镜解析完成';
+        if (p.data.status === 'created') return '点击生成提示词开始';
+        const count = p.data.storyboards.length;
+        return `已生成 ${count} 个分镜提示词`;
       },
       getActionLabel: (p) => {
-        const status = getStepStatusFromProjectStatus(
-          p.status,
-          ['generating_prompts'],
-          [
-            'prompts_ready',
-            'generating_images',
-            'images_ready',
-            'generating_videos',
-            'completed'
-          ]
-        );
-        if (status === 'completed') return '编辑提示词和角色引用';
-        if (status === 'pending' && p.status === 'parsed') return '生成提示词';
-        return undefined;
+        if (p.data.status === 'created') return '生成提示词';
+        return '编辑提示词';
       },
       getActionUrl: (p) => {
-        const status = getStepStatusFromProjectStatus(
-          p.status,
-          ['generating_prompts'],
-          [
-            'prompts_ready',
-            'generating_images',
-            'images_ready',
-            'generating_videos',
-            'completed'
-          ]
-        );
-        if (
-          status === 'completed' ||
-          (status === 'pending' && p.status === 'parsed')
-        ) {
+        if (p.data.status !== 'created') {
           return `/dashboard/youtube/prompts/${p.id}`;
         }
         return undefined;
       },
-      note: '微创新分镜数量由AI决定，与源视频分镜数量无关'
+      canTriggerAction: (p) => p.data.status === 'created',
+      note: '调用AI分析YouTube视频并生成分镜提示词'
     },
     {
       id: 'images',
@@ -371,40 +183,35 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       icon: <Image className='h-4 w-4' />,
       getStatus: (p) =>
         getStepStatusFromProjectStatus(
-          p.status,
-          ['generating_images'],
-          ['images_ready', 'generating_videos', 'completed']
+          p.data.status,
+          ['images_partial'],
+          ['images_ready', 'videos_partial', 'completed']
         ),
       getDescription: (p) => {
-        if (p.status === 'generating_images') return '正在生成图片...';
-        if (
-          ['images_ready', 'generating_videos', 'completed'].includes(p.status)
-        ) {
-          return '图片生成完成';
-        }
-        return '前置条件：提示词编辑完成';
+        if (p.data.status === 'created') return '等待提示词生成';
+        const storyboards = p.data.storyboards;
+        const withImages = storyboards.filter(
+          (sb) => sb.images.length > 0
+        ).length;
+        const selected = storyboards.filter(
+          (sb) => sb.selected_image_index !== null
+        ).length;
+        if (withImages === 0) return '前置条件：提示词编辑完成';
+        return `已生成 ${withImages}/${storyboards.length} | 已选择 ${selected}/${storyboards.length}`;
       },
       getActionLabel: (p) => {
         const status = getStepStatusFromProjectStatus(
-          p.status,
-          ['generating_images'],
-          ['images_ready', 'generating_videos', 'completed']
+          p.data.status,
+          ['images_partial'],
+          ['images_ready', 'videos_partial', 'completed']
         );
         if (status === 'completed') return '查看/选择图片';
-        if (status === 'pending' && p.status === 'prompts_ready')
-          return '开始生成图片';
+        if (status === 'in_progress') return '继续生成';
+        if (p.data.status === 'prompts_ready') return '开始生成图片';
         return undefined;
       },
       getActionUrl: (p) => {
-        const status = getStepStatusFromProjectStatus(
-          p.status,
-          ['generating_images'],
-          ['images_ready', 'generating_videos', 'completed']
-        );
-        if (
-          status === 'completed' ||
-          (status === 'pending' && p.status === 'prompts_ready')
-        ) {
+        if (p.data.status !== 'created') {
           return `/dashboard/youtube/generate/${p.id}`;
         }
         return undefined;
@@ -417,36 +224,49 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       icon: <Video className='h-4 w-4' />,
       getStatus: (p) =>
         getStepStatusFromProjectStatus(
-          p.status,
-          ['generating_videos'],
+          p.data.status,
+          ['videos_partial'],
           ['completed']
         ),
       getDescription: (p) => {
-        if (p.status === 'generating_videos') return '正在生成视频...';
-        if (p.status === 'completed') return '视频生成完成';
-        return '前置条件：所有分镜图片已生成且已选择';
+        const storyboards = p.data.storyboards;
+        const allImagesSelected = storyboards.every(
+          (sb) => sb.selected_image_index !== null
+        );
+        if (!allImagesSelected && storyboards.length > 0) {
+          return '前置条件：所有分镜图片已选择';
+        }
+        const withVideos = storyboards.filter(
+          (sb) => sb.videos.length > 0
+        ).length;
+        const selected = storyboards.filter(
+          (sb) => sb.selected_video_index !== null
+        ).length;
+        if (withVideos === 0) return '等待图片生成完成';
+        return `已生成 ${withVideos}/${storyboards.length} | 已选择 ${selected}/${storyboards.length}`;
       },
       getActionLabel: (p) => {
         const status = getStepStatusFromProjectStatus(
-          p.status,
-          ['generating_videos'],
+          p.data.status,
+          ['videos_partial'],
           ['completed']
         );
         if (status === 'completed') return '查看/下载视频';
-        if (status === 'pending' && p.status === 'images_ready')
+        if (status === 'in_progress') return '继续生成';
+        // 检查是否所有图片都已选择
+        const allImagesSelected = p.data.storyboards.every(
+          (sb) => sb.selected_image_index !== null
+        );
+        if (allImagesSelected && p.data.storyboards.length > 0) {
           return '开始生成视频';
+        }
         return undefined;
       },
       getActionUrl: (p) => {
-        const status = getStepStatusFromProjectStatus(
-          p.status,
-          ['generating_videos'],
-          ['completed']
+        const allImagesSelected = p.data.storyboards.every(
+          (sb) => sb.selected_image_index !== null
         );
-        if (
-          status === 'completed' ||
-          (status === 'pending' && p.status === 'images_ready')
-        ) {
+        if (allImagesSelected && p.data.storyboards.length > 0) {
           return `/dashboard/youtube/generate/${p.id}?tab=video`;
         }
         return undefined;
@@ -495,11 +315,27 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
           <ArrowLeft className='h-4 w-4' />
         </Button>
         <div>
-          <h1 className='text-2xl font-bold'>{project.name}</h1>
+          <h1 className='text-2xl font-bold'>{project.data.name}</h1>
           <p className='text-muted-foreground text-sm'>
-            创建于 {new Date(project.created_at).toLocaleDateString('zh-CN')}
+            状态: {getStatusText(project.data.status)} | 创建于{' '}
+            {new Date(project.created_at).toLocaleDateString('zh-CN')}
           </p>
         </div>
+      </div>
+
+      {/* YouTube URL */}
+      <div className='bg-muted rounded-lg p-4'>
+        <p className='text-sm'>
+          <span className='font-medium'>YouTube URL: </span>
+          <a
+            href={project.data.youtube_url}
+            target='_blank'
+            rel='noopener noreferrer'
+            className='text-blue-500 hover:underline'
+          >
+            {project.data.youtube_url}
+          </a>
+        </p>
       </div>
 
       {/* 整体进度条 */}
@@ -510,8 +346,6 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         </div>
         <Progress value={overallProgress} className='h-2' />
         <div className='text-muted-foreground flex justify-between text-xs'>
-          <span>下载</span>
-          <span>分镜</span>
           <span>提示词</span>
           <span>图片</span>
           <span>视频</span>
@@ -527,9 +361,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
           const actionUrl = step.getActionUrl?.(project);
           const canTrigger = step.canTriggerAction?.(project);
 
-          const isDownloadStep = step.id === 'download';
-          const showDownloadProgress =
-            isDownloadStep && downloadTask && downloadTask.status === 'running';
+          const isPromptsStep = step.id === 'prompts';
 
           return (
             <WorkflowStep
@@ -538,21 +370,31 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               title={step.title}
               status={status}
               description={description}
-              progress={
-                showDownloadProgress ? downloadTask.progress : undefined
-              }
               actionLabel={actionLabel}
               actionUrl={actionUrl}
               onAction={
-                isDownloadStep && canTrigger ? handleStartDownload : undefined
+                isPromptsStep && canTrigger ? handleGeneratePrompts : undefined
               }
-              isLoading={isDownloadStep && downloadingVideo}
-              disabled={isDownloadStep && downloadingVideo}
+              isLoading={isPromptsStep && generatingPrompts}
+              disabled={isPromptsStep && generatingPrompts}
               details={
                 <>
-                  {isDownloadStep && project.video_path && (
-                    <div className='text-muted-foreground'>
-                      视频时长: {formatDuration(project.duration)}
+                  {/* 提示词生成步骤的instruction输入框 */}
+                  {isPromptsStep && canTrigger && (
+                    <div className='mb-3 space-y-2'>
+                      <Label htmlFor='instruction' className='text-sm'>
+                        生成指令
+                      </Label>
+                      <Input
+                        id='instruction'
+                        value={instruction}
+                        onChange={(e) => setInstruction(e.target.value)}
+                        placeholder='不需要改编'
+                        className='max-w-md'
+                      />
+                      <p className='text-muted-foreground text-xs'>
+                        此指令将影响AI生成提示词的风格和内容
+                      </p>
                     </div>
                   )}
                   {step.note && (

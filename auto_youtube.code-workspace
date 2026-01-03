@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"name": "auto_youtube",
+			"path": "."
+		}
+	],
+	"settings": {
+		"kiroAgent.configureMCP": "Disabled",
+		"typescript.autoClosingTags": false
+	}
+}

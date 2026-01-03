@@ -2,17 +2,11 @@
 
 import { use, useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Loader2, ChevronRight, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { StoryboardCard } from '@/components/youtube/storyboard-card';
-import { TimeAdjustDialog } from '@/components/youtube/time-adjust-dialog';
-import { useToast } from '@/components/ui/use-toast';
-import {
-  getProject,
-  getStoryboards,
-  updateStoryboard
-} from '@/lib/api/youtube';
-import type { VideoProject, Storyboard } from '@/types/youtube';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { getProject } from '@/lib/api/youtube';
+import type { ProjectResponse } from '@/types/youtube';
 
 interface StoryboardPageProps {
   params: Promise<{
@@ -20,31 +14,30 @@ interface StoryboardPageProps {
   }>;
 }
 
+/**
+ * 源视频分镜页面
+ *
+ * 注意：根据当前后端API设计，源视频分镜解析功能尚未实现。
+ * 此页面仅作为占位，显示提示信息并引导用户进入提示词编辑流程。
+ *
+ * 业务逻辑说明：
+ * - 源视频分镜：从原始YouTube视频解析出的分镜，仅供参考展示，不影响后续流程
+ * - 微创新视频分镜：AI自动生成的提示词对应的分镜，数量与源视频分镜无关
+ */
 export default function StoryboardPage({ params }: StoryboardPageProps) {
   const { projectId } = use(params);
   const router = useRouter();
-  const { toast } = useToast();
 
-  const [project, setProject] = useState<VideoProject | null>(null);
-  const [storyboards, setStoryboards] = useState<Storyboard[]>([]);
+  const [project, setProject] = useState<ProjectResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 时间调整对话框状态
-  const [timeDialogOpen, setTimeDialogOpen] = useState(false);
-  const [selectedStoryboard, setSelectedStoryboard] =
-    useState<Storyboard | null>(null);
-
-  // 加载项目和分镜数据
+  // 加载项目数据
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [projectData, storyboardsData] = await Promise.all([
-        getProject(projectId),
-        getStoryboards(projectId)
-      ]);
+      const projectData = await getProject(projectId);
       setProject(projectData);
-      setStoryboards(storyboardsData.data);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载数据失败');
@@ -57,69 +50,7 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
     loadData();
   }, [loadData]);
 
-  // 保存单个分镜描述
-  const handleSaveDescription = async (id: string, description: string) => {
-    try {
-      await updateStoryboard(id, { description });
-
-      // 更新本地状态
-      setStoryboards((prev) =>
-        prev.map((sb) => (sb.id === id ? { ...sb, description } : sb))
-      );
-
-      toast({
-        title: '保存成功',
-        description: '分镜描述已更新'
-      });
-    } catch (err) {
-      toast({
-        title: '保存失败',
-        description: err instanceof Error ? err.message : '保存分镜描述失败',
-        variant: 'destructive'
-      });
-      throw err;
-    }
-  };
-
-  // 打开时间调整对话框
-  const handleAdjustTime = (storyboard: Storyboard) => {
-    setSelectedStoryboard(storyboard);
-    setTimeDialogOpen(true);
-  };
-
-  // 保存时间调整
-  const handleSaveTime = async (
-    id: string,
-    startTime: number,
-    endTime: number
-  ) => {
-    try {
-      await updateStoryboard(id, { start_time: startTime, end_time: endTime });
-
-      // 更新本地状态
-      setStoryboards((prev) =>
-        prev.map((sb) =>
-          sb.id === id
-            ? { ...sb, start_time: startTime, end_time: endTime }
-            : sb
-        )
-      );
-
-      toast({
-        title: '保存成功',
-        description: '分镜时间已更新'
-      });
-    } catch (err) {
-      toast({
-        title: '保存失败',
-        description: err instanceof Error ? err.message : '保存分镜时间失败',
-        variant: 'destructive'
-      });
-      throw err;
-    }
-  };
-
-  // 导航到下一步
+  // 导航到提示词编辑页面
   const handleNextStep = () => {
     router.push(`/dashboard/youtube/prompts/${projectId}`);
   };
@@ -165,65 +96,52 @@ export default function StoryboardPage({ params }: StoryboardPageProps) {
             <ArrowLeft className='h-4 w-4' />
           </Button>
           <div>
-            <h1 className='text-2xl font-bold'>分镜编辑</h1>
-            <p className='text-muted-foreground text-sm'>
-              共 {storyboards.length} 个分镜
-            </p>
+            <h1 className='text-2xl font-bold'>源视频分镜</h1>
+            <p className='text-muted-foreground text-sm'>{project.data.name}</p>
           </div>
         </div>
         <Button onClick={handleNextStep} className='gap-1'>
-          继续下一步: 生成提示词
+          跳过，直接生成提示词
           <ChevronRight className='h-4 w-4' />
         </Button>
       </div>
 
-      {/* 分镜列表 */}
-      {storyboards.length === 0 ? (
-        <div className='bg-muted/50 flex h-64 flex-col items-center justify-center gap-4 rounded-lg border'>
-          <p className='text-muted-foreground'>暂无分镜数据</p>
-          <Button
-            variant='outline'
-            onClick={() =>
-              router.push(`/dashboard/youtube/project/${projectId}`)
-            }
-          >
-            返回项目详情
-          </Button>
-        </div>
-      ) : (
-        <div className='space-y-4'>
-          {storyboards.map((storyboard) => (
-            <StoryboardCard
-              key={storyboard.id}
-              storyboard={storyboard}
-              onSaveDescription={handleSaveDescription}
-              onAdjustTime={handleAdjustTime}
-            />
-          ))}
-        </div>
-      )}
+      {/* 功能说明 */}
+      <Alert>
+        <Info className='h-4 w-4' />
+        <AlertTitle>功能说明</AlertTitle>
+        <AlertDescription className='space-y-2'>
+          <p>
+            源视频分镜解析功能用于从原始YouTube视频中提取分镜信息，仅供参考展示，不影响后续的AI创作流程。
+          </p>
+          <p>
+            您可以直接跳过此步骤，进入提示词编辑页面，AI将根据视频内容自动生成微创新分镜和对应的提示词。
+          </p>
+        </AlertDescription>
+      </Alert>
+
+      {/* 占位内容 */}
+      <div className='bg-muted/50 flex h-64 flex-col items-center justify-center gap-4 rounded-lg border border-dashed'>
+        <p className='text-muted-foreground text-center'>
+          源视频分镜解析功能正在开发中...
+          <br />
+          <span className='text-sm'>
+            您可以直接进入下一步，AI将自动分析视频并生成微创新分镜
+          </span>
+        </p>
+        <Button onClick={handleNextStep} variant='outline' className='gap-1'>
+          继续下一步
+          <ChevronRight className='h-4 w-4' />
+        </Button>
+      </div>
 
       {/* 底部操作栏 */}
-      {storyboards.length > 0 && (
-        <div className='sticky bottom-4 flex justify-end'>
-          <Button
-            onClick={handleNextStep}
-            size='lg'
-            className='gap-1 shadow-lg'
-          >
-            继续下一步: 生成提示词
-            <ChevronRight className='h-4 w-4' />
-          </Button>
-        </div>
-      )}
-
-      {/* 时间调整对话框 */}
-      <TimeAdjustDialog
-        storyboard={selectedStoryboard}
-        open={timeDialogOpen}
-        onOpenChange={setTimeDialogOpen}
-        onSave={handleSaveTime}
-      />
+      <div className='sticky bottom-4 flex justify-end'>
+        <Button onClick={handleNextStep} size='lg' className='gap-1 shadow-lg'>
+          继续下一步: 生成提示词
+          <ChevronRight className='h-4 w-4' />
+        </Button>
+      </div>
     </div>
   );
 }

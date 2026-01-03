@@ -1,227 +1,179 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { GenerationTask, TaskStatus } from '@/types/youtube';
-import { getTask } from '@/lib/api/youtube';
+import { useState, useCallback, useRef } from 'react';
+import type { TaskStatus } from '@/types/youtube';
 
-export interface UseTaskPollingOptions {
-  /** 轮询间隔（毫秒），默认 2000ms */
-  interval?: number;
-  /** 是否自动开始轮询，默认 true */
-  autoStart?: boolean;
-  /** 任务完成回调 */
-  onComplete?: (task: GenerationTask) => void;
-  /** 任务失败回调 */
-  onFailed?: (task: GenerationTask) => void;
-  /** 任务状态变化回调 */
-  onStatusChange?: (
-    task: GenerationTask,
-    prevStatus: TaskStatus | null
-  ) => void;
-  /** 轮询错误回调 */
-  onError?: (error: Error) => void;
+/**
+ * 简化的任务状态接口
+ * 由于后端不支持任务轮询API，此接口用于前端本地状态管理
+ */
+export interface LocalTaskState {
+  id: string;
+  status: TaskStatus;
+  progress: number;
+  total_items: number;
+  completed_items: number;
+  failed_items: number;
+  error_message?: string;
 }
 
-export interface UseTaskPollingReturn {
+export interface UseLocalTaskStateOptions {
+  /** 任务完成回调 */
+  onComplete?: (task: LocalTaskState) => void;
+  /** 任务失败回调 */
+  onFailed?: (task: LocalTaskState) => void;
+  /** 任务状态变化回调 */
+  onStatusChange?: (
+    task: LocalTaskState,
+    prevStatus: TaskStatus | null
+  ) => void;
+}
+
+export interface UseLocalTaskStateReturn {
   /** 当前任务数据 */
-  task: GenerationTask | null;
-  /** 是否正在加载 */
-  isLoading: boolean;
-  /** 是否正在轮询 */
-  isPolling: boolean;
+  task: LocalTaskState | null;
+  /** 是否正在执行 */
+  isRunning: boolean;
   /** 错误信息 */
   error: Error | null;
-  /** 开始轮询 */
-  startPolling: () => void;
-  /** 暂停轮询 */
-  pausePolling: () => void;
-  /** 恢复轮询 */
-  resumePolling: () => void;
-  /** 停止轮询 */
-  stopPolling: () => void;
-  /** 手动刷新任务状态 */
-  refresh: () => Promise<void>;
+  /** 开始任务 */
+  startTask: (taskId: string, totalItems: number) => void;
+  /** 更新进度 */
+  updateProgress: (completedItems: number, failedItems?: number) => void;
+  /** 完成任务 */
+  completeTask: () => void;
+  /** 任务失败 */
+  failTask: (errorMessage: string) => void;
+  /** 重置任务 */
+  resetTask: () => void;
 }
 
 /**
- * 任务状态轮询 Hook
- * 用于定时获取任务状态并处理完成/失败回调
+ * 本地任务状态管理 Hook
+ * 用于管理前端生成任务的状态（图片生成、视频生成等）
  */
-export function useTaskPolling(
-  taskId: string | null,
-  options: UseTaskPollingOptions = {}
-): UseTaskPollingReturn {
-  const {
-    interval = 2000,
-    autoStart = true,
-    onComplete,
-    onFailed,
-    onStatusChange,
-    onError
-  } = options;
+export function useLocalTaskState(
+  options: UseLocalTaskStateOptions = {}
+): UseLocalTaskStateReturn {
+  const { onComplete, onFailed, onStatusChange } = options;
 
-  const [task, setTask] = useState<GenerationTask | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
+  const [task, setTask] = useState<LocalTaskState | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
-  // 使用 ref 存储回调以避免重新创建 effect
-  const callbacksRef = useRef({
-    onComplete,
-    onFailed,
-    onStatusChange,
-    onError
-  });
-  callbacksRef.current = { onComplete, onFailed, onStatusChange, onError };
-
-  // 存储上一次的状态用于比较
   const prevStatusRef = useRef<TaskStatus | null>(null);
+  const callbacksRef = useRef({ onComplete, onFailed, onStatusChange });
+  callbacksRef.current = { onComplete, onFailed, onStatusChange };
 
-  // 轮询控制
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const isPausedRef = useRef(false);
+  const isRunning = task?.status === 'running' || task?.status === 'pending';
 
-  // 获取任务状态
-  const fetchTask = useCallback(async () => {
-    if (!taskId) return;
+  // 开始任务
+  const startTask = useCallback((taskId: string, totalItems: number) => {
+    const newTask: LocalTaskState = {
+      id: taskId,
+      status: 'running',
+      progress: 0,
+      total_items: totalItems,
+      completed_items: 0,
+      failed_items: 0
+    };
 
-    setIsLoading(true);
+    setTask(newTask);
     setError(null);
 
-    try {
-      const taskData = await getTask(taskId);
-      const prevStatus = prevStatusRef.current;
-
-      setTask(taskData);
-
-      // 状态变化回调
-      if (taskData.status !== prevStatus) {
-        callbacksRef.current.onStatusChange?.(taskData, prevStatus);
-        prevStatusRef.current = taskData.status;
-      }
-
-      // 完成回调
-      if (taskData.status === 'completed') {
-        callbacksRef.current.onComplete?.(taskData);
-        // 任务完成后停止轮询
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-          setIsPolling(false);
-        }
-      }
-
-      // 失败回调
-      if (taskData.status === 'failed') {
-        callbacksRef.current.onFailed?.(taskData);
-        // 任务失败后停止轮询
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-          setIsPolling(false);
-        }
-      }
-
-      // 取消状态也停止轮询
-      if (taskData.status === 'cancelled') {
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-          setIsPolling(false);
-        }
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('获取任务状态失败');
-      setError(error);
-      callbacksRef.current.onError?.(error);
-    } finally {
-      setIsLoading(false);
+    if (prevStatusRef.current !== 'running') {
+      callbacksRef.current.onStatusChange?.(newTask, prevStatusRef.current);
+      prevStatusRef.current = 'running';
     }
-  }, [taskId]);
-
-  // 开始轮询
-  const startPolling = useCallback(() => {
-    if (!taskId || pollingRef.current) return;
-
-    isPausedRef.current = false;
-    setIsPolling(true);
-
-    // 立即获取一次
-    fetchTask();
-
-    // 设置定时轮询
-    pollingRef.current = setInterval(() => {
-      if (!isPausedRef.current) {
-        fetchTask();
-      }
-    }, interval);
-  }, [taskId, interval, fetchTask]);
-
-  // 暂停轮询
-  const pausePolling = useCallback(() => {
-    isPausedRef.current = true;
   }, []);
 
-  // 恢复轮询
-  const resumePolling = useCallback(() => {
-    isPausedRef.current = false;
-    // 恢复时立即获取一次
-    fetchTask();
-  }, [fetchTask]);
+  // 更新进度
+  const updateProgress = useCallback(
+    (completedItems: number, failedItems: number = 0) => {
+      setTask((prev) => {
+        if (!prev) return prev;
 
-  // 停止轮询
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    setIsPolling(false);
-    isPausedRef.current = false;
+        const progress =
+          prev.total_items > 0
+            ? Math.round((completedItems / prev.total_items) * 100)
+            : 0;
+
+        return {
+          ...prev,
+          completed_items: completedItems,
+          failed_items: failedItems,
+          progress
+        };
+      });
+    },
+    []
+  );
+
+  // 完成任务
+  const completeTask = useCallback(() => {
+    setTask((prev) => {
+      if (!prev) return prev;
+
+      const completedTask: LocalTaskState = {
+        ...prev,
+        status: 'completed',
+        progress: 100,
+        completed_items: prev.total_items
+      };
+
+      callbacksRef.current.onComplete?.(completedTask);
+      callbacksRef.current.onStatusChange?.(
+        completedTask,
+        prevStatusRef.current
+      );
+      prevStatusRef.current = 'completed';
+
+      return completedTask;
+    });
   }, []);
 
-  // 手动刷新
-  const refresh = useCallback(async () => {
-    await fetchTask();
-  }, [fetchTask]);
+  // 任务失败
+  const failTask = useCallback((errorMessage: string) => {
+    setTask((prev) => {
+      if (!prev) return prev;
 
-  // 自动开始轮询
-  useEffect(() => {
-    if (taskId && autoStart) {
-      startPolling();
-    }
+      const failedTask: LocalTaskState = {
+        ...prev,
+        status: 'failed',
+        error_message: errorMessage
+      };
 
-    return () => {
-      stopPolling();
-    };
-  }, [taskId, autoStart, startPolling, stopPolling]);
+      setError(new Error(errorMessage));
+      callbacksRef.current.onFailed?.(failedTask);
+      callbacksRef.current.onStatusChange?.(failedTask, prevStatusRef.current);
+      prevStatusRef.current = 'failed';
 
-  // taskId 变化时重置状态
-  useEffect(() => {
-    if (!taskId) {
-      setTask(null);
-      prevStatusRef.current = null;
-      stopPolling();
-    }
-  }, [taskId, stopPolling]);
+      return failedTask;
+    });
+  }, []);
+
+  // 重置任务
+  const resetTask = useCallback(() => {
+    setTask(null);
+    setError(null);
+    prevStatusRef.current = null;
+  }, []);
 
   return {
     task,
-    isLoading,
-    isPolling,
+    isRunning,
     error,
-    startPolling,
-    pausePolling,
-    resumePolling,
-    stopPolling,
-    refresh
+    startTask,
+    updateProgress,
+    completeTask,
+    failTask,
+    resetTask
   };
 }
 
 /**
  * 计算任务进度百分比
- * 确保 progress = (completed_items / total_items) * 100
  */
-export function calculateTaskProgress(task: GenerationTask | null): number {
+export function calculateTaskProgress(task: LocalTaskState | null): number {
   if (!task || task.total_items === 0) return 0;
   return Math.round((task.completed_items / task.total_items) * 100);
 }
@@ -255,3 +207,6 @@ export function canResumeTask(status: TaskStatus): boolean {
 export function canCancelTask(status: TaskStatus): boolean {
   return status === 'running' || status === 'pending' || status === 'paused';
 }
+
+// 保留旧的导出名称以兼容现有代码
+export const useTaskPolling = useLocalTaskState;

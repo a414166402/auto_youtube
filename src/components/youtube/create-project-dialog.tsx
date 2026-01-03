@@ -27,9 +27,14 @@ import { Input } from '@/components/ui/input';
 import { createProject } from '@/lib/api/youtube';
 import type { VideoProject } from '@/types/youtube';
 
-// YouTube URL validation regex
+// YouTube URL validation regex - 支持多种格式:
+// - https://www.youtube.com/watch?v=xxxxx
+// - https://youtu.be/xxxxx
+// - https://www.youtube.com/shorts/xxxxx
+// - https://youtube.com/shorts/xxxxx
+// - https://m.youtube.com/watch?v=xxxxx
 const youtubeUrlRegex =
-  /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[a-zA-Z0-9_-]{11}(&.*)?$/;
+  /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}([?&].*)?$/;
 
 const formSchema = z.object({
   name: z
@@ -115,7 +120,7 @@ export function CreateProjectDialog({ onSuccess }: CreateProjectDialogProps) {
                   <FormLabel>YouTube视频URL</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder='https://www.youtube.com/watch?v=xxxxx'
+                      placeholder='https://www.youtube.com/watch?v=xxx 或 /shorts/xxx'
                       {...field}
                     />
                   </FormControl>

@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
+import { getProxiedVideoUrl } from '@/lib/utils/media-proxy';
 import type { GeneratedVideo } from '@/types/youtube';
 
 export interface VideoPlayerProps {
@@ -59,6 +60,10 @@ export function VideoPlayer({
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [showControls, setShowControls] = useState(true);
+  const [videoDimensions, setVideoDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
 
   // Reset state when video changes or dialog opens
   useEffect(() => {
@@ -66,6 +71,7 @@ export function VideoPlayer({
       setIsPlaying(false);
       setCurrentTime(0);
       setIsLoading(true);
+      setVideoDimensions(null);
     }
   }, [open, video]);
 
@@ -161,6 +167,10 @@ export function VideoPlayer({
   const handleLoadedMetadata = useCallback(() => {
     if (!videoRef.current) return;
     setDuration(videoRef.current.duration);
+    setVideoDimensions({
+      width: videoRef.current.videoWidth,
+      height: videoRef.current.videoHeight
+    });
     setIsLoading(false);
   }, []);
 
@@ -227,22 +237,22 @@ export function VideoPlayer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-4xl overflow-hidden p-0'>
-        <DialogHeader className='p-4 pb-0'>
+      <DialogContent className='flex max-h-[95vh] max-w-[95vw] flex-col overflow-hidden p-0'>
+        <DialogHeader className='flex-shrink-0 p-4 pb-2'>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         <div
           ref={containerRef}
-          className='relative bg-black'
+          className='relative flex min-h-0 flex-1 items-center justify-center bg-black'
           onMouseMove={handleMouseMove}
           onMouseLeave={() => isPlaying && setShowControls(false)}
         >
           {/* Video Element */}
           <video
             ref={videoRef}
-            src={video.video_url}
-            className='aspect-video w-full'
+            src={getProxiedVideoUrl(video.url)}
+            className='max-h-[calc(95vh-120px)] max-w-full'
             onClick={handlePlayPause}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
@@ -381,10 +391,13 @@ export function VideoPlayer({
         </div>
 
         {/* Video Info */}
-        <div className='text-muted-foreground p-4 pt-2 text-sm'>
-          <span>
-            创建时间: {new Date(video.created_at).toLocaleString('zh-CN')}
-          </span>
+        <div className='text-muted-foreground flex flex-shrink-0 items-center justify-between border-t p-4 pt-2 text-sm'>
+          <span>源图片索引: {video.source_image_index}</span>
+          {videoDimensions && (
+            <span>
+              尺寸: {videoDimensions.width} × {videoDimensions.height}
+            </span>
+          )}
         </div>
       </DialogContent>
     </Dialog>
