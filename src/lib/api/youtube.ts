@@ -18,7 +18,10 @@ import type {
   Storyboard,
   CharacterMapping,
   StructuredPromptData,
-  ProjectStatus
+  ProjectStatus,
+  MediaStatsResponse,
+  MediaCleanupResponse,
+  MediaCleanupType
 } from '@/types/youtube';
 import { mockYoutubeApi, USE_MOCK_DATA } from './youtube-mock';
 
@@ -629,4 +632,65 @@ export function getProjectProgress(project: ProjectResponse): {
     imagesProgress: Math.round((withImages / total) * 100),
     videosProgress: Math.round((withVideos / total) * 100)
   };
+}
+
+// ============ 媒体管理 API ============
+
+/**
+ * 获取项目媒体统计信息
+ * GET /api/youtube/projects/{project_id}/media/stats
+ */
+export async function getMediaStats(
+  projectId: string
+): Promise<MediaStatsResponse> {
+  if (USE_MOCK_DATA) {
+    // Mock实现
+    return {
+      project_id: projectId,
+      images: {
+        total_count: 10,
+        selected_count: 5,
+        unselected_count: 5,
+        total_size: '15.2 MB',
+        total_bytes: 15938560
+      },
+      videos: {
+        total_count: 5,
+        selected_count: 3,
+        unselected_count: 2,
+        total_size: '45.8 MB',
+        total_bytes: 48023552
+      },
+      total_size: '61.0 MB',
+      total_bytes: 63962112
+    };
+  }
+  return fetchApi<MediaStatsResponse>(`/projects/${projectId}/media/stats`);
+}
+
+/**
+ * 清理项目中未选中的媒体文件
+ * POST /api/youtube/projects/{project_id}/media/cleanup
+ */
+export async function cleanupMedia(
+  projectId: string,
+  mediaType: MediaCleanupType = 'all'
+): Promise<MediaCleanupResponse> {
+  if (USE_MOCK_DATA) {
+    // Mock实现
+    return {
+      success: true,
+      deleted_images: mediaType === 'videos' ? 0 : 5,
+      deleted_videos: mediaType === 'images' ? 0 : 2,
+      freed_size: '25.3 MB',
+      freed_bytes: 26542080,
+      errors: []
+    };
+  }
+  return fetchApi<MediaCleanupResponse>(
+    `/projects/${projectId}/media/cleanup?media_type=${mediaType}`,
+    {
+      method: 'POST'
+    }
+  );
 }

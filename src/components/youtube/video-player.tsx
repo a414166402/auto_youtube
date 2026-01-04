@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Play,
   Pause,
@@ -33,6 +33,8 @@ export interface VideoPlayerProps {
   onOpenChange: (open: boolean) => void;
   /** Optional title for the dialog */
   title?: string;
+  /** Optional pre-computed video URL (to avoid re-computing proxy URL) */
+  videoUrl?: string;
 }
 
 // Format time to MM:SS
@@ -47,7 +49,8 @@ export function VideoPlayer({
   video,
   open,
   onOpenChange,
-  title = '视频预览'
+  title = '视频预览',
+  videoUrl
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,6 +67,12 @@ export function VideoPlayer({
     width: number;
     height: number;
   } | null>(null);
+
+  // 使用传入的 URL 或计算代理 URL（缓存以避免重复计算）
+  const proxiedVideoUrl = useMemo(
+    () => videoUrl || (video ? getProxiedVideoUrl(video.url) : ''),
+    [videoUrl, video]
+  );
 
   // Reset state when video changes or dialog opens
   useEffect(() => {
@@ -251,7 +260,7 @@ export function VideoPlayer({
           {/* Video Element */}
           <video
             ref={videoRef}
-            src={getProxiedVideoUrl(video.url)}
+            src={proxiedVideoUrl}
             className='max-h-[calc(95vh-120px)] max-w-full'
             onClick={handlePlayPause}
             onTimeUpdate={handleTimeUpdate}

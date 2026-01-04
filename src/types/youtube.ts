@@ -208,6 +208,39 @@ export interface ApiError {
   details?: Record<string, unknown>;
 }
 
+// ============ 媒体管理类型 ============
+
+// 媒体统计信息
+export interface MediaCategoryStats {
+  total_count: number;
+  selected_count: number;
+  unselected_count: number;
+  total_size: string;
+  total_bytes: number;
+}
+
+// 项目媒体统计响应
+export interface MediaStatsResponse {
+  project_id: string;
+  images: MediaCategoryStats;
+  videos: MediaCategoryStats;
+  total_size: string;
+  total_bytes: number;
+}
+
+// 媒体清理类型
+export type MediaCleanupType = 'all' | 'images' | 'videos';
+
+// 媒体清理响应
+export interface MediaCleanupResponse {
+  success: boolean;
+  deleted_images: number;
+  deleted_videos: number;
+  freed_size: string;
+  freed_bytes: number;
+  errors: string[];
+}
+
 // ============ 旧类型定义（保留兼容性）============
 
 // 源视频分镜（仅供参考展示，不影响后续流程）

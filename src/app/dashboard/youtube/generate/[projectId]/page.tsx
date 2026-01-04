@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState, useCallback } from 'react';
+import { use, useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -16,7 +16,8 @@ import {
   Users,
   ZoomIn,
   Pencil,
-  Save
+  Save,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -42,7 +43,8 @@ import {
   getProject,
   updateProject,
   generateImage,
-  generateVideo
+  generateVideo,
+  cleanupMedia
 } from '@/lib/api/youtube';
 import {
   loadGlobalCharactersAsync,
@@ -105,6 +107,84 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     height: number;
   } | null>(null);
 
+  // 缓存所有图片的代理URL，避免重复计算和重复请求
+  const imageUrlCache = useMemo(() => {
+    const cache = new Map<string, string>();
+    if (project) {
+      for (const storyboard of project.data.storyboards) {
+        for (const image of storyboard.images) {
+          if (!cache.has(image.url)) {
+            cache.set(image.url, getProxiedImageUrl(image.url));
+          }
+        }
+      }
+    }
+    return cache;
+  }, [project]);
+
+  // 缓存所有视频的代理URL
+  const videoUrlCache = useMemo(() => {
+    const cache = new Map<string, string>();
+    if (project) {
+      for (const storyboard of project.data.storyboards) {
+        for (const video of storyboard.videos) {
+          if (!cache.has(video.url)) {
+            cache.set(video.url, getProxiedVideoUrl(video.url));
+          }
+        }
+      }
+    }
+    return cache;
+  }, [project]);
+
+  // 获取缓存的图片URL
+  const getCachedImageUrl = useCallback(
+    (url: string) => {
+      return imageUrlCache.get(url) || getProxiedImageUrl(url);
+    },
+    [imageUrlCache]
+  );
+
+  // 获取缓存的视频URL
+  const getCachedVideoUrl = useCallback(
+    (url: string) => {
+      return videoUrlCache.get(url) || getProxiedVideoUrl(url);
+    },
+    [videoUrlCache]
+  );
+
+  // 缓存预览图片的代理URL，避免重复计算
+  const previewImageUrl = useMemo(
+    () => (previewImage ? getCachedImageUrl(previewImage.url) : ''),
+    [previewImage, getCachedImageUrl]
+  );
+
+  // 缓存预览视频的代理URL
+  const previewVideoUrl = useMemo(
+    () => (previewVideo ? getCachedVideoUrl(previewVideo.url) : ''),
+    [previewVideo, getCachedVideoUrl]
+  );
+
+  // 预加载所有图片到浏览器缓存，避免 Dialog 打开时重新请求
+  useEffect(() => {
+    if (!project) return;
+
+    const preloadedImages: HTMLImageElement[] = [];
+
+    for (const storyboard of project.data.storyboards) {
+      for (const image of storyboard.images) {
+        const img = new window.Image();
+        img.src = getCachedImageUrl(image.url);
+        preloadedImages.push(img);
+      }
+    }
+
+    // 保持引用，防止被垃圾回收
+    return () => {
+      preloadedImages.length = 0;
+    };
+  }, [project, getCachedImageUrl]);
+
   // 提示词编辑状态（图片生成）
   const [editingPromptIndex, setEditingPromptIndex] = useState<number | null>(
     null
@@ -118,6 +198,10 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   >(null);
   const [editedVideoPrompt, setEditedVideoPrompt] = useState<string>('');
   const [savingVideoPrompt, setSavingVideoPrompt] = useState(false);
+
+  // 清理状态
+  const [cleaningImages, setCleaningImages] = useState(false);
+  const [cleaningVideos, setCleaningVideos] = useState(false);
 
   // 加载数据
   const loadData = useCallback(async () => {
@@ -274,6 +358,11 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   ) => {
     if (!project) return;
 
+    // 如果已经是选中状态，不触发接口
+    const currentSelected =
+      project.data.storyboards[storyboardIndex]?.selected_image_index;
+    if (currentSelected === imageIndex) return;
+
     try {
       const storyboards = [...project.data.storyboards];
       storyboards[storyboardIndex] = {
@@ -303,6 +392,11 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     videoIndex: number
   ) => {
     if (!project) return;
+
+    // 如果已经是选中状态，不触发接口
+    const currentSelected =
+      project.data.storyboards[storyboardIndex]?.selected_video_index;
+    if (currentSelected === videoIndex) return;
 
     try {
       const storyboards = [...project.data.storyboards];
@@ -369,6 +463,68 @@ export default function GeneratePage({ params }: GeneratePageProps) {
       if (sb.selected_image_index !== null && sb.videos.length === 0) {
         await handleGenerateVideo(i);
       }
+    }
+  };
+
+  // 清理未选中的图片
+  const handleCleanupImages = async () => {
+    if (!project) return;
+
+    setCleaningImages(true);
+    try {
+      const result = await cleanupMedia(projectId, 'images');
+      if (result.success) {
+        toast({
+          title: '清理完成',
+          description: `已删除 ${result.deleted_images} 张未选中图片，释放 ${result.freed_size}`
+        });
+        loadData();
+      } else {
+        toast({
+          title: '清理失败',
+          description: result.errors.join(', ') || '清理图片失败',
+          variant: 'destructive'
+        });
+      }
+    } catch (err) {
+      toast({
+        title: '清理失败',
+        description: err instanceof Error ? err.message : '清理图片失败',
+        variant: 'destructive'
+      });
+    } finally {
+      setCleaningImages(false);
+    }
+  };
+
+  // 清理未选中的视频
+  const handleCleanupVideos = async () => {
+    if (!project) return;
+
+    setCleaningVideos(true);
+    try {
+      const result = await cleanupMedia(projectId, 'videos');
+      if (result.success) {
+        toast({
+          title: '清理完成',
+          description: `已删除 ${result.deleted_videos} 个未选中视频，释放 ${result.freed_size}`
+        });
+        loadData();
+      } else {
+        toast({
+          title: '清理失败',
+          description: result.errors.join(', ') || '清理视频失败',
+          variant: 'destructive'
+        });
+      }
+    } catch (err) {
+      toast({
+        title: '清理失败',
+        description: err instanceof Error ? err.message : '清理视频失败',
+        variant: 'destructive'
+      });
+    } finally {
+      setCleaningVideos(false);
     }
   };
 
@@ -636,19 +792,35 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                     ` (${generatingImageIndices.size} 个生成中)`}
                 </p>
               </div>
-              <Button
-                size='sm'
-                onClick={handleGenerateAllImages}
-                disabled={generatingImageIndices.size > 0}
-                className='gap-1'
-              >
-                {generatingImageIndices.size > 0 ? (
-                  <Loader2 className='h-4 w-4 animate-spin' />
-                ) : (
-                  <RefreshCw className='h-4 w-4' />
-                )}
-                批量生成
-              </Button>
+              <div className='flex items-center gap-2'>
+                <Button
+                  size='sm'
+                  variant='outline'
+                  onClick={handleCleanupImages}
+                  disabled={cleaningImages || generatingImageIndices.size > 0}
+                  className='gap-1'
+                >
+                  {cleaningImages ? (
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                  ) : (
+                    <Trash2 className='h-4 w-4' />
+                  )}
+                  清理未选中
+                </Button>
+                <Button
+                  size='sm'
+                  onClick={handleGenerateAllImages}
+                  disabled={generatingImageIndices.size > 0}
+                  className='gap-1'
+                >
+                  {generatingImageIndices.size > 0 ? (
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                  ) : (
+                    <RefreshCw className='h-4 w-4' />
+                  )}
+                  批量生成
+                </Button>
+              </div>
             </div>
             <Progress
               value={
@@ -875,14 +1047,14 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                     </PopoverContent>
                   </Popover>
 
-                  {/* 图片网格 - 固定高度，宽度自适应 */}
+                  {/* 图片网格 - 水平滚动 */}
                   <div className='mt-auto'>
                     {storyboard.images.length > 0 ? (
-                      <div className='flex flex-wrap gap-1'>
+                      <div className='flex gap-1 overflow-x-auto pb-1'>
                         {storyboard.images.map((image, imgIndex) => (
                           <div
                             key={imgIndex}
-                            className={`group relative h-20 cursor-pointer overflow-hidden rounded border-2 ${
+                            className={`group relative h-40 flex-shrink-0 cursor-pointer overflow-hidden rounded border-2 ${
                               storyboard.selected_image_index === imgIndex
                                 ? 'border-primary'
                                 : 'border-transparent hover:border-gray-300'
@@ -890,7 +1062,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                             onClick={() => handleSelectImage(index, imgIndex)}
                           >
                             <img
-                              src={getProxiedImageUrl(image.url)}
+                              src={getCachedImageUrl(image.url)}
                               alt={`图片 ${imgIndex + 1}`}
                               className='h-full w-auto object-contain'
                             />
@@ -913,7 +1085,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                         ))}
                         {/* 重新生成按钮 */}
                         <div
-                          className='bg-muted flex h-20 w-20 cursor-pointer items-center justify-center rounded border-2 border-dashed hover:bg-gray-100'
+                          className='bg-muted flex h-40 w-40 flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-dashed hover:bg-gray-100'
                           onClick={() => handleGenerateImage(index)}
                         >
                           {generatingImageIndices.has(index) ? (
@@ -979,22 +1151,38 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                     ` (${generatingVideoIndices.size} 个生成中)`}
                 </p>
               </div>
-              <Button
-                size='sm'
-                onClick={handleGenerateAllVideos}
-                disabled={
-                  generatingVideoIndices.size > 0 ||
-                  imageProgress.selected === 0
-                }
-                className='gap-1'
-              >
-                {generatingVideoIndices.size > 0 ? (
-                  <Loader2 className='h-4 w-4 animate-spin' />
-                ) : (
-                  <RefreshCw className='h-4 w-4' />
-                )}
-                批量生成
-              </Button>
+              <div className='flex items-center gap-2'>
+                <Button
+                  size='sm'
+                  variant='outline'
+                  onClick={handleCleanupVideos}
+                  disabled={cleaningVideos || generatingVideoIndices.size > 0}
+                  className='gap-1'
+                >
+                  {cleaningVideos ? (
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                  ) : (
+                    <Trash2 className='h-4 w-4' />
+                  )}
+                  清理未选中
+                </Button>
+                <Button
+                  size='sm'
+                  onClick={handleGenerateAllVideos}
+                  disabled={
+                    generatingVideoIndices.size > 0 ||
+                    imageProgress.selected === 0
+                  }
+                  className='gap-1'
+                >
+                  {generatingVideoIndices.size > 0 ? (
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                  ) : (
+                    <RefreshCw className='h-4 w-4' />
+                  )}
+                  批量生成
+                </Button>
+              </div>
             </div>
             <Progress
               value={
@@ -1128,14 +1316,14 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                         )}
                       </div>
 
-                      {/* 视频网格 - 固定高度，宽度自适应 */}
+                      {/* 视频网格 - 水平滚动 */}
                       <div className='mt-auto'>
                         {hasSelectedImage && storyboard.videos.length > 0 ? (
-                          <div className='flex flex-wrap gap-1'>
+                          <div className='flex gap-1 overflow-x-auto pb-1'>
                             {storyboard.videos.map((video, vidIndex) => (
                               <div
                                 key={vidIndex}
-                                className={`group relative h-20 cursor-pointer overflow-hidden rounded border-2 ${
+                                className={`group relative h-40 w-[90px] flex-shrink-0 cursor-pointer overflow-hidden rounded border-2 ${
                                   storyboard.selected_video_index === vidIndex
                                     ? 'border-primary'
                                     : 'border-transparent hover:border-gray-300'
@@ -1145,8 +1333,8 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                                 }
                               >
                                 <video
-                                  src={getProxiedVideoUrl(video.url)}
-                                  className='h-full w-auto object-contain'
+                                  src={getCachedVideoUrl(video.url)}
+                                  className='h-full w-full object-cover'
                                 />
                                 <div className='absolute inset-0 flex items-center justify-center bg-black/30'>
                                   <Play className='h-4 w-4 text-white' />
@@ -1171,7 +1359,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                             ))}
                             {/* 重新生成按钮 */}
                             <div
-                              className='bg-muted flex h-20 w-28 cursor-pointer items-center justify-center rounded border-2 border-dashed hover:bg-gray-100'
+                              className='bg-muted flex h-40 w-[90px] flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-dashed hover:bg-gray-100'
                               onClick={() => handleGenerateVideo(index)}
                             >
                               {generatingVideoIndices.has(index) ? (
@@ -1235,7 +1423,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
             <>
               <div className='flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black/5 p-4'>
                 <img
-                  src={getProxiedImageUrl(previewImage.url)}
+                  src={previewImageUrl}
                   alt='图片预览'
                   className='max-h-[calc(95vh-120px)] max-w-full object-contain'
                   onLoad={handleImageLoad}
@@ -1265,7 +1453,21 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         open={previewVideoOpen}
         onOpenChange={setPreviewVideoOpen}
         title='视频预览'
+        videoUrl={previewVideoUrl}
       />
+
+      {/* 隐藏的图片预加载容器 - 确保图片在 DOM 中保持加载状态 */}
+      <div className='hidden' aria-hidden='true'>
+        {project?.data.storyboards.map((storyboard) =>
+          storyboard.images.map((image, imgIndex) => (
+            <img
+              key={`preload-${storyboard.index}-${imgIndex}`}
+              src={getCachedImageUrl(image.url)}
+              alt=''
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }

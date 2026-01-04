@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Check, ZoomIn, Loader2 } from 'lucide-react';
 import {
   Dialog,
@@ -32,8 +32,23 @@ export function ImageSelector({
   const [isSelecting, setIsSelecting] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
+  // 用于存储预加载的图片，确保浏览器缓存
+  const preloadedImageRef = useRef<HTMLImageElement | null>(null);
+
+  // 缓存代理URL，避免重复计算，确保浏览器能有效利用缓存
+  const proxiedUrl = useMemo(() => getProxiedImageUrl(image.url), [image.url]);
+
+  // 预加载图片到浏览器缓存
+  useEffect(() => {
+    const img = new Image();
+    img.src = proxiedUrl;
+    preloadedImageRef.current = img;
+  }, [proxiedUrl]);
+
   const handleSelect = async () => {
     if (isSelecting) return;
+    // 如果已经选中，不触发选择操作
+    if (isSelected) return;
 
     setIsSelecting(true);
     try {
@@ -73,7 +88,7 @@ export function ImageSelector({
       >
         {/* Image */}
         <img
-          src={getProxiedImageUrl(image.url)}
+          src={proxiedUrl}
           alt={`生成的图片`}
           className='h-full w-full object-cover'
         />
@@ -134,7 +149,7 @@ export function ImageSelector({
           </DialogHeader>
           <div className='bg-muted relative aspect-video overflow-hidden rounded-md'>
             <img
-              src={getProxiedImageUrl(image.url)}
+              src={proxiedUrl}
               alt='图片预览'
               className='h-full w-full object-contain'
             />

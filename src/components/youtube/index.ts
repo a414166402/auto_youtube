@@ -24,6 +24,7 @@ export {
   CompactTaskControls,
   getTaskStatusLabel
 } from './task-controls';
+export { MediaStatsPanel } from './media-stats-panel';
 
 // Loading skeletons
 export {

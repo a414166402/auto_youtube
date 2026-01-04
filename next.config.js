@@ -11,6 +11,11 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'api.slingacademy.com',
         port: ''
+      },
+      {
+        protocol: 'https',
+        hostname: 'api.gamestick4k.com',
+        port: ''
       }
     ]
   },

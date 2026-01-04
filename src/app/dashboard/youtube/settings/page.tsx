@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { GlobalCharacterCard } from '@/components/youtube/global-character-card';
+import { MediaStatsPanel } from '@/components/youtube/media-stats-panel';
 import {
   loadGlobalCharactersAsync,
   saveGlobalCharactersAsync,
@@ -257,6 +258,9 @@ export default function SettingsPage() {
           立即保存
         </Button>
       </div>
+
+      {/* 媒体占用统计面板 */}
+      <MediaStatsPanel />
     </div>
   );
 }

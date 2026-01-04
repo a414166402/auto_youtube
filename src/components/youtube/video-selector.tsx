@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Check, Play, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getProxiedVideoUrl } from '@/lib/utils/media-proxy';
@@ -28,8 +28,24 @@ export function VideoSelector({
 }: VideoSelectorProps) {
   const [isSelecting, setIsSelecting] = useState(false);
 
+  // 用于存储预加载的视频元素，确保浏览器缓存
+  const preloadedVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // 缓存代理URL，避免重复计算
+  const proxiedUrl = useMemo(() => getProxiedVideoUrl(video.url), [video.url]);
+
+  // 预加载视频元数据到浏览器缓存
+  useEffect(() => {
+    const videoEl = document.createElement('video');
+    videoEl.preload = 'metadata';
+    videoEl.src = proxiedUrl;
+    preloadedVideoRef.current = videoEl;
+  }, [proxiedUrl]);
+
   const handleSelect = async () => {
     if (isSelecting) return;
+    // 如果已经选中，不触发选择操作
+    if (isSelected) return;
 
     setIsSelecting(true);
     try {
@@ -68,7 +84,7 @@ export function VideoSelector({
     >
       {/* Video thumbnail - using poster or first frame */}
       <video
-        src={getProxiedVideoUrl(video.url)}
+        src={proxiedUrl}
         className='h-full w-full object-cover'
         muted
         playsInline

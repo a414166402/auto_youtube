@@ -1,68 +1,39 @@
 /**
  * 媒体代理工具
  * 用于解决外部图片/视频的CORS问题
+ *
+ * 所有后端媒体文件都通过 Next.js API 代理访问，避免 CORS 问题
  */
 
 /**
- * 判断URL是否需要代理
- * 本地URL和已知安全域名不需要代理
+ * 判断URL是否是后端媒体路径
+ * 后端媒体路径以 /media/ 开头
  */
-function needsProxy(url: string): boolean {
+function isBackendMediaPath(url: string): boolean {
   if (!url) return false;
-
-  // 相对路径不需要代理
-  if (url.startsWith('/')) return false;
-
-  // data URL不需要代理
-  if (url.startsWith('data:')) return false;
-
-  // blob URL不需要代理
-  if (url.startsWith('blob:')) return false;
-
-  try {
-    const parsedUrl = new URL(url);
-
-    // 本地开发环境不需要代理
-    if (
-      parsedUrl.hostname === 'localhost' ||
-      parsedUrl.hostname === '127.0.0.1'
-    ) {
-      return false;
-    }
-
-    // 已知安全的CDN域名不需要代理
-    const safeDomains = [
-      'picsum.photos',
-      'images.unsplash.com',
-      'via.placeholder.com',
-      'placehold.co'
-    ];
-
-    if (safeDomains.some((domain) => parsedUrl.hostname.includes(domain))) {
-      return false;
-    }
-
-    // 其他外部URL需要代理
-    return true;
-  } catch {
-    return false;
-  }
+  return url.startsWith('/media/');
 }
 
 /**
  * 获取代理后的媒体URL
- * @param url 原始URL
- * @returns 代理URL或原始URL
+ * @param url 原始URL（相对路径如 /media/youtube/...）
+ * @returns 代理URL
  */
 export function getProxiedMediaUrl(url: string): string {
   if (!url) return url;
 
-  if (!needsProxy(url)) {
+  // data URL 和 blob URL 不需要代理
+  if (url.startsWith('data:') || url.startsWith('blob:')) {
     return url;
   }
 
-  // 使用代理路由
-  return `/api/proxy/media?url=${encodeURIComponent(url)}`;
+  // 后端媒体路径通过代理访问
+  if (isBackendMediaPath(url)) {
+    return `/api/proxy/media?url=${encodeURIComponent(url)}`;
+  }
+
+  // 其他URL直接返回
+  return url;
 }
 
 /**
