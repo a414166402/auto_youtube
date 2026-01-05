@@ -181,12 +181,20 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       id: 'images',
       title: '图片生成',
       icon: <Image className='h-4 w-4' />,
-      getStatus: (p) =>
-        getStepStatusFromProjectStatus(
-          p.data.status,
-          ['images_partial'],
-          ['images_ready', 'videos_partial', 'completed']
-        ),
+      getStatus: (p) => {
+        // 待开始：只在提示词未生成时
+        if (p.data.status === 'created') return 'pending';
+        const storyboards = p.data.storyboards;
+        if (storyboards.length === 0) return 'pending';
+        // 已完成：所有分镜都有图片且都已选中
+        const allHaveImages = storyboards.every((sb) => sb.images.length > 0);
+        const allSelected = storyboards.every(
+          (sb) => sb.selected_image_index !== null
+        );
+        if (allHaveImages && allSelected) return 'completed';
+        // 进行中：提示词已生成后，只要没全部完成就是进行中
+        return 'in_progress';
+      },
       getDescription: (p) => {
         if (p.data.status === 'created') return '等待提示词生成';
         const storyboards = p.data.storyboards;
@@ -200,13 +208,13 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         return `已生成 ${withImages}/${storyboards.length} | 已选择 ${selected}/${storyboards.length}`;
       },
       getActionLabel: (p) => {
-        const status = getStepStatusFromProjectStatus(
-          p.data.status,
-          ['images_partial'],
-          ['images_ready', 'videos_partial', 'completed']
-        );
-        if (status === 'completed') return '查看/选择图片';
-        if (status === 'in_progress') return '继续生成';
+        if (p.data.status === 'created') return undefined;
+        const storyboards = p.data.storyboards;
+        if (storyboards.length === 0) return undefined;
+        // 已完成或进行中都显示"查看/选择图片"
+        const anyHasImages = storyboards.some((sb) => sb.images.length > 0);
+        if (anyHasImages) return '查看/选择图片';
+        // 待开始
         if (p.data.status === 'prompts_ready') return '开始生成图片';
         return undefined;
       },
@@ -222,54 +230,65 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       id: 'videos',
       title: '视频生成',
       icon: <Video className='h-4 w-4' />,
-      getStatus: (p) =>
-        getStepStatusFromProjectStatus(
-          p.data.status,
-          ['videos_partial'],
-          ['completed']
-        ),
-      getDescription: (p) => {
+      getStatus: (p) => {
+        // 待开始：只在提示词未生成时
+        if (p.data.status === 'created') return 'pending';
         const storyboards = p.data.storyboards;
-        const allImagesSelected = storyboards.every(
-          (sb) => sb.selected_image_index !== null
+        if (storyboards.length === 0) return 'pending';
+        // 已完成：所有分镜都有视频且都已选中
+        const allHaveVideos = storyboards.every((sb) => sb.videos.length > 0);
+        const allSelected = storyboards.every(
+          (sb) => sb.selected_video_index !== null
         );
-        if (!allImagesSelected && storyboards.length > 0) {
-          return '前置条件：所有分镜图片已选择';
-        }
+        if (allHaveVideos && allSelected) return 'completed';
+        // 进行中：提示词已生成后，只要没全部完成就是进行中
+        return 'in_progress';
+      },
+      getDescription: (p) => {
+        if (p.data.status === 'created') return '等待提示词生成';
+        const storyboards = p.data.storyboards;
+        if (storyboards.length === 0) return '等待提示词生成';
         const withVideos = storyboards.filter(
           (sb) => sb.videos.length > 0
         ).length;
         const selected = storyboards.filter(
           (sb) => sb.selected_video_index !== null
         ).length;
-        if (withVideos === 0) return '等待图片生成完成';
+        // 显示有多少分镜的图片已选中（可以生成视频）
+        const imagesSelected = storyboards.filter(
+          (sb) => sb.selected_image_index !== null
+        ).length;
+        if (withVideos === 0) {
+          return `可生成: ${imagesSelected}/${storyboards.length} (需先选择图片)`;
+        }
         return `已生成 ${withVideos}/${storyboards.length} | 已选择 ${selected}/${storyboards.length}`;
       },
       getActionLabel: (p) => {
-        const status = getStepStatusFromProjectStatus(
-          p.data.status,
-          ['videos_partial'],
-          ['completed']
-        );
-        if (status === 'completed') return '查看/下载视频';
-        if (status === 'in_progress') return '继续生成';
-        // 检查是否所有图片都已选择
-        const allImagesSelected = p.data.storyboards.every(
+        if (p.data.status === 'created') return undefined;
+        const storyboards = p.data.storyboards;
+        if (storyboards.length === 0) return undefined;
+        // 已完成或进行中都显示"查看/选择视频"
+        const anyHasVideos = storyboards.some((sb) => sb.videos.length > 0);
+        if (anyHasVideos) return '查看/选择视频';
+        // 检查是否有任何分镜的图片已选中
+        const anyImageSelected = storyboards.some(
           (sb) => sb.selected_image_index !== null
         );
-        if (allImagesSelected && p.data.storyboards.length > 0) {
-          return '开始生成视频';
-        }
-        return undefined;
+        if (anyImageSelected) return '开始生成视频';
+        return '去选择图片';
       },
       getActionUrl: (p) => {
-        const allImagesSelected = p.data.storyboards.every(
+        if (p.data.status === 'created') return undefined;
+        if (p.data.storyboards.length === 0) return undefined;
+        // 检查是否有任何分镜的图片已选中
+        const anyImageSelected = p.data.storyboards.some(
           (sb) => sb.selected_image_index !== null
         );
-        if (allImagesSelected && p.data.storyboards.length > 0) {
+        if (anyImageSelected) {
           return `/dashboard/youtube/generate/${p.id}?tab=video`;
         }
-        return undefined;
+        // 没有图片选中，跳转到图片生成页面
+        return `/dashboard/youtube/generate/${p.id}`;
       },
       note: '使用用户选择的图片 + image_to_video提示词'
     }

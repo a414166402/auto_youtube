@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { Check, ZoomIn, Loader2 } from 'lucide-react';
 import {
   Dialog,
@@ -9,7 +9,6 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { getProxiedImageUrl } from '@/lib/utils/media-proxy';
 import type { GeneratedImage } from '@/types/youtube';
 
 export interface ImageSelectorProps {
@@ -31,19 +30,6 @@ export function ImageSelector({
 }: ImageSelectorProps) {
   const [isSelecting, setIsSelecting] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-
-  // 用于存储预加载的图片，确保浏览器缓存
-  const preloadedImageRef = useRef<HTMLImageElement | null>(null);
-
-  // 缓存代理URL，避免重复计算，确保浏览器能有效利用缓存
-  const proxiedUrl = useMemo(() => getProxiedImageUrl(image.url), [image.url]);
-
-  // 预加载图片到浏览器缓存
-  useEffect(() => {
-    const img = new Image();
-    img.src = proxiedUrl;
-    preloadedImageRef.current = img;
-  }, [proxiedUrl]);
 
   const handleSelect = async () => {
     if (isSelecting) return;
@@ -88,7 +74,7 @@ export function ImageSelector({
       >
         {/* Image */}
         <img
-          src={proxiedUrl}
+          src={image.url}
           alt={`生成的图片`}
           className='h-full w-full object-cover'
         />
@@ -149,7 +135,7 @@ export function ImageSelector({
           </DialogHeader>
           <div className='bg-muted relative aspect-video overflow-hidden rounded-md'>
             <img
-              src={proxiedUrl}
+              src={image.url}
               alt='图片预览'
               className='h-full w-full object-contain'
             />

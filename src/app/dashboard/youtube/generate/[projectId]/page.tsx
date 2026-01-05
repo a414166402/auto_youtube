@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState, useCallback, useMemo } from 'react';
+import { use, useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -53,10 +53,6 @@ import {
   type GlobalCharacter,
   type ProjectCharacterMapping
 } from '@/lib/character-config';
-import {
-  getProxiedImageUrl,
-  getProxiedVideoUrl
-} from '@/lib/utils/media-proxy';
 import { VideoPlayer } from '@/components/youtube/video-player';
 import type {
   ProjectResponse,
@@ -106,84 +102,6 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     width: number;
     height: number;
   } | null>(null);
-
-  // 缓存所有图片的代理URL，避免重复计算和重复请求
-  const imageUrlCache = useMemo(() => {
-    const cache = new Map<string, string>();
-    if (project) {
-      for (const storyboard of project.data.storyboards) {
-        for (const image of storyboard.images) {
-          if (!cache.has(image.url)) {
-            cache.set(image.url, getProxiedImageUrl(image.url));
-          }
-        }
-      }
-    }
-    return cache;
-  }, [project]);
-
-  // 缓存所有视频的代理URL
-  const videoUrlCache = useMemo(() => {
-    const cache = new Map<string, string>();
-    if (project) {
-      for (const storyboard of project.data.storyboards) {
-        for (const video of storyboard.videos) {
-          if (!cache.has(video.url)) {
-            cache.set(video.url, getProxiedVideoUrl(video.url));
-          }
-        }
-      }
-    }
-    return cache;
-  }, [project]);
-
-  // 获取缓存的图片URL
-  const getCachedImageUrl = useCallback(
-    (url: string) => {
-      return imageUrlCache.get(url) || getProxiedImageUrl(url);
-    },
-    [imageUrlCache]
-  );
-
-  // 获取缓存的视频URL
-  const getCachedVideoUrl = useCallback(
-    (url: string) => {
-      return videoUrlCache.get(url) || getProxiedVideoUrl(url);
-    },
-    [videoUrlCache]
-  );
-
-  // 缓存预览图片的代理URL，避免重复计算
-  const previewImageUrl = useMemo(
-    () => (previewImage ? getCachedImageUrl(previewImage.url) : ''),
-    [previewImage, getCachedImageUrl]
-  );
-
-  // 缓存预览视频的代理URL
-  const previewVideoUrl = useMemo(
-    () => (previewVideo ? getCachedVideoUrl(previewVideo.url) : ''),
-    [previewVideo, getCachedVideoUrl]
-  );
-
-  // 预加载所有图片到浏览器缓存，避免 Dialog 打开时重新请求
-  useEffect(() => {
-    if (!project) return;
-
-    const preloadedImages: HTMLImageElement[] = [];
-
-    for (const storyboard of project.data.storyboards) {
-      for (const image of storyboard.images) {
-        const img = new window.Image();
-        img.src = getCachedImageUrl(image.url);
-        preloadedImages.push(img);
-      }
-    }
-
-    // 保持引用，防止被垃圾回收
-    return () => {
-      preloadedImages.length = 0;
-    };
-  }, [project, getCachedImageUrl]);
 
   // 提示词编辑状态（图片生成）
   const [editingPromptIndex, setEditingPromptIndex] = useState<number | null>(
@@ -1062,7 +980,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                             onClick={() => handleSelectImage(index, imgIndex)}
                           >
                             <img
-                              src={getCachedImageUrl(image.url)}
+                              src={image.url}
                               alt={`图片 ${imgIndex + 1}`}
                               className='h-full w-auto object-contain'
                             />
@@ -1250,7 +1168,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                       {selectedImage && (
                         <div className='h-12 flex-shrink-0 overflow-hidden rounded'>
                           <img
-                            src={getProxiedImageUrl(selectedImage.url)}
+                            src={selectedImage.url}
                             alt='源图片'
                             className='h-full w-auto object-contain'
                           />
@@ -1333,7 +1251,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                                 }
                               >
                                 <video
-                                  src={getCachedVideoUrl(video.url)}
+                                  src={video.url}
                                   className='h-full w-full object-cover'
                                 />
                                 <div className='absolute inset-0 flex items-center justify-center bg-black/30'>
@@ -1423,7 +1341,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
             <>
               <div className='flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black/5 p-4'>
                 <img
-                  src={previewImageUrl}
+                  src={previewImage.url}
                   alt='图片预览'
                   className='max-h-[calc(95vh-120px)] max-w-full object-contain'
                   onLoad={handleImageLoad}
@@ -1453,21 +1371,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         open={previewVideoOpen}
         onOpenChange={setPreviewVideoOpen}
         title='视频预览'
-        videoUrl={previewVideoUrl}
       />
-
-      {/* 隐藏的图片预加载容器 - 确保图片在 DOM 中保持加载状态 */}
-      <div className='hidden' aria-hidden='true'>
-        {project?.data.storyboards.map((storyboard) =>
-          storyboard.images.map((image, imgIndex) => (
-            <img
-              key={`preload-${storyboard.index}-${imgIndex}`}
-              src={getCachedImageUrl(image.url)}
-              alt=''
-            />
-          ))
-        )}
-      </div>
     </div>
   );
 }
