@@ -1,14 +1,14 @@
 import { Metadata } from 'next';
 
 export const siteConfig = {
-  name: 'Backlinks Manager',
+  name: 'YouTube AI Video Tool',
   description:
-    'A powerful management system for backlinks with automated tasks execution',
-  url: 'https://backlinks-manager.example.com',
-  ogImage: 'https://backlinks-manager.example.com/og.jpg',
+    'AI-powered video production pipeline with storyboard parsing, prompt generation, image/video generation',
+  url: 'https://youtube-ai-tool.example.com',
+  ogImage: 'https://youtube-ai-tool.example.com/og.jpg',
   links: {
-    twitter: 'https://twitter.com/backlinksmgr',
-    github: 'https://github.com/backlinks-manager/backlinks-manager'
+    twitter: 'https://twitter.com/youtubeaitool',
+    github: 'https://github.com/youtube-ai-tool'
   }
 };
 
@@ -20,20 +20,20 @@ export const defaultMetadata: Metadata = {
   },
   description: siteConfig.description,
   keywords: [
-    'Backlinks',
-    'SEO',
-    'Link Building',
-    'Automation',
-    'Tasks',
-    'Management'
+    'YouTube',
+    'AI',
+    'Video Production',
+    'Storyboard',
+    'Prompt Generation',
+    'Image Generation'
   ],
   authors: [
     {
-      name: 'Backlinks Manager Team',
+      name: 'YouTube AI Tool Team',
       url: siteConfig.url
     }
   ],
-  creator: 'Backlinks Manager Team',
+  creator: 'YouTube AI Tool Team',
   openGraph: {
     type: 'website',
     locale: 'en_US',
@@ -55,7 +55,7 @@ export const defaultMetadata: Metadata = {
     title: siteConfig.name,
     description: siteConfig.description,
     images: [siteConfig.ogImage],
-    creator: '@backlinksmgr'
+    creator: '@youtubeaitool'
   },
   icons: {
     icon: '/favicon.ico',

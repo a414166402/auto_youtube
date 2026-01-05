@@ -77,7 +77,7 @@ export default function AppSidebar() {
 
   // 辅助函数，用于将标题转换为翻译键
   const getTitleKey = (title: string) => {
-    // 将标题转换为小写并去除空格，例如 "Fetch Backlinks" -> "fetch"
+    // 将标题转换为小写并去除空格，例如 "Projects" -> "projects"
     // 假设翻译键是标题的第一个单词的小写形式
     return title.split(' ')[0].toLowerCase();
   };

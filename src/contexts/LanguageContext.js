@@ -40,7 +40,7 @@ export function LanguageProvider({ children }) {
     }
   };
 
-  // 翻译函数，接受一个键路径（如 "backlinks.title"）并返回翻译
+  // 翻译函数，接受一个键路径（如 "youtube.title"）并返回翻译
   const t = (key) => {
     const keys = key.split('.');
     let result = messages;

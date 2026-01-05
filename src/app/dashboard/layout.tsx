@@ -8,7 +8,7 @@ import { cookies } from 'next/headers';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
-  description: `${siteConfig.name} - Manage and automate your backlinks`
+  description: `${siteConfig.name} - AI-powered video production`
 };
 
 export default async function DashboardLayout({

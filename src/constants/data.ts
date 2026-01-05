@@ -22,39 +22,6 @@ export const navItems: NavItem[] = [
     items: [] // Empty array as there are no child items for Dashboard
   },
   {
-    title: 'Backlinks',
-    url: '/dashboard/backlinks',
-    icon: 'link',
-    shortcut: ['b', 'l'],
-    isActive: true,
-    items: [
-      {
-        title: 'Fetch Backlinks',
-        url: '/dashboard/backlinks/fetch',
-        icon: 'cloudDownload',
-        shortcut: ['b', 'f']
-      },
-      {
-        title: 'List Backlinks',
-        url: '/dashboard/backlinks/list',
-        icon: 'list',
-        shortcut: ['b', 'l']
-      },
-      {
-        title: 'Tasks',
-        url: '/dashboard/backlinks/tasks',
-        icon: 'listChecks',
-        shortcut: ['b', 't']
-      },
-      {
-        title: 'Maintenance',
-        url: '/dashboard/backlinks/maintenance',
-        icon: 'settings',
-        shortcut: ['b', 'm']
-      }
-    ]
-  },
-  {
     title: 'YouTube',
     url: '/dashboard/youtube',
     icon: 'youtube',

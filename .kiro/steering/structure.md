@@ -4,12 +4,9 @@
 src/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API routes (proxy to backend services)
-│   │   ├── backlinks/     # Backlinks API proxy
-│   │   ├── semrush/       # SEMrush API proxy
 │   │   └── youtube/       # YouTube API proxy ([...path] catch-all)
 │   ├── auth/              # Clerk auth pages (sign-in, sign-up)
 │   ├── dashboard/         # Protected dashboard routes
-│   │   ├── backlinks/     # Backlinks feature pages
 │   │   ├── youtube/       # YouTube tool pages
 │   │   ├── kanban/        # Kanban board
 │   │   ├── overview/      # Dashboard overview (parallel routes)
@@ -25,7 +22,6 @@ src/
 │   ├── layout/            # App layout (sidebar, header)
 │   ├── kbar/              # Command palette
 │   ├── modal/             # Modal components
-│   ├── semrush/           # SEMrush-specific components
 │   └── youtube/           # YouTube tool components
 │
 ├── features/              # Feature-specific modules
@@ -51,4 +47,4 @@ src/
 - **Parallel Routes**: Dashboard overview uses `@slot` folders for parallel data loading
 - **Feature Modules**: Business logic grouped in `features/` with components, utils subfolders
 - **UI Components**: Base components in `components/ui/`, feature-specific elsewhere
-- **Type Definitions**: Centralized in `src/types/` per domain (youtube.ts, backlinks.ts)
+- **Type Definitions**: Centralized in `src/types/` per domain (youtube.ts)

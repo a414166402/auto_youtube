@@ -17,7 +17,6 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import SemrushConfigComponent from '@/components/semrush/semrush-config';
 
 export default function SettingsPage() {
   const { locale, changeLocale, t } = useLanguage();
@@ -65,9 +64,6 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Semrush配置组件 */}
-          <SemrushConfigComponent />
         </div>
       </div>
     </PageContainer>

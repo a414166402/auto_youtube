@@ -1,10 +1,9 @@
 # Product Overview
 
-A Next.js dashboard application for managing backlinks and YouTube AI video production workflows.
+A Next.js dashboard application for YouTube AI video production workflows.
 
 ## Core Features
 
-- **Backlinks Management**: Fetch, list, and maintain backlinks with SEMrush integration
 - **YouTube Video Tool**: AI-powered video production pipeline with storyboard parsing, prompt generation, image/video generation
 - **Dashboard Analytics**: Overview with charts (area, bar, pie graphs) and sales data
 - **Kanban Board**: Task management with drag-and-drop
