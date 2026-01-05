@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { Storyboard, GeneratedImage } from '@/types/youtube';
+import type { Storyboard } from '@/types/youtube';
 import { ImageSelector } from '@/components/youtube/image-selector';
 
 export type StoryboardGenerationStatus =
@@ -103,8 +103,14 @@ export function ImageGenerationCard({
           </span>
           {generationType.hasCharacterRefs && (
             <div className='flex gap-1'>
-              {storyboard.character_refs!.map((ref) => (
-                <Badge key={ref} variant='outline' className='gap-1 text-xs'>
+              {/* 按 character_refs 数组顺序展示，顺序影响上传顺序 */}
+              {storyboard.character_refs!.map((ref, refIndex) => (
+                <Badge
+                  key={`${refIndex}-${ref}`}
+                  variant='outline'
+                  className='gap-1 text-xs'
+                  title={`上传顺序: ${refIndex + 1}`}
+                >
                   <User className='h-2.5 w-2.5' />
                   {ref}
                 </Badge>

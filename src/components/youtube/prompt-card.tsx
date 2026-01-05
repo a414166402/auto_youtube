@@ -115,15 +115,20 @@ export function PromptCard({
             </p>
           </div>
 
-          {/* 角色引用标签 */}
+          {/* 角色引用标签 - 按 character_refs 数组顺序展示，顺序影响上传顺序 */}
           {prompt.character_refs && prompt.character_refs.length > 0 && (
             <div className='flex flex-wrap items-center gap-2'>
               <span className='text-muted-foreground text-xs'>角色引用:</span>
               <div className='flex flex-wrap gap-1'>
-                {prompt.character_refs.map((ref) => {
+                {prompt.character_refs.map((ref, refIndex) => {
                   const config = getCharacterConfig(ref);
                   return (
-                    <Badge key={ref} variant='outline' className='gap-1'>
+                    <Badge
+                      key={`${refIndex}-${ref}`}
+                      variant='outline'
+                      className='gap-1'
+                      title={`上传顺序: ${refIndex + 1}`}
+                    >
                       {config?.imageData && (
                         <img
                           src={config.imageData}

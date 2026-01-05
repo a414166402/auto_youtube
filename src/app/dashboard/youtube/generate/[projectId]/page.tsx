@@ -165,9 +165,12 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     setGeneratingImageIndices((prev) => new Set(prev).add(storyboardIndex));
     try {
       // 获取角色引用图片（Base64数据）
+      // 重要：按照 character_refs 数组的顺序获取图片，顺序会影响图文生图接口的上传顺序
       const characterImages: string[] = [];
-      if (storyboard.character_refs) {
-        for (const ref of storyboard.character_refs) {
+      if (storyboard.character_refs && storyboard.character_refs.length > 0) {
+        // 按 character_refs 数组顺序遍历，确保上传顺序与 JSON 中的顺序一致
+        for (let i = 0; i < storyboard.character_refs.length; i++) {
+          const ref = storyboard.character_refs[i];
           // 从 "角色A" 提取 "A"，然后通过项目映射找到全局角色
           const identifier = extractIdentifier(ref);
           const character = getCharacterForIdentifier(
@@ -765,11 +768,11 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                       </Badge>
                     )}
                   </div>
-                  {/* 角色参考图展示 */}
+                  {/* 角色参考图展示 - 按 character_refs 数组顺序展示，顺序影响上传顺序 */}
                   {storyboard.character_refs &&
                   storyboard.character_refs.length > 0 ? (
                     <div className='mt-1 flex items-center gap-1'>
-                      {storyboard.character_refs.map((ref) => {
+                      {storyboard.character_refs.map((ref, refIndex) => {
                         const identifier = extractIdentifier(ref);
                         const character = getCharacterForIdentifier(
                           identifier,
@@ -778,15 +781,15 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                         );
                         return character?.imageData ? (
                           <img
-                            key={identifier}
+                            key={`${refIndex}-${identifier}`}
                             src={character.imageData}
-                            alt={`角色 ${identifier}`}
+                            alt={`角色 ${identifier} (第${refIndex + 1}个)`}
                             className='h-6 w-auto rounded border object-contain'
-                            title={character.name || `角色 ${identifier}`}
+                            title={`${character.name || `角色 ${identifier}`} (上传顺序: ${refIndex + 1})`}
                           />
                         ) : (
                           <Badge
-                            key={identifier}
+                            key={`${refIndex}-${identifier}`}
                             variant='outline'
                             className='text-[10px]'
                           >

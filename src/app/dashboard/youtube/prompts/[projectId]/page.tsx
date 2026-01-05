@@ -517,11 +517,11 @@ export default function PromptsPage({ params }: PromptsPageProps) {
                     )}
                   </div>
                 </div>
-                {/* 角色引用展示 */}
+                {/* 角色引用展示 - 按 character_refs 数组顺序展示，顺序影响上传顺序 */}
                 {storyboard.character_refs &&
                   storyboard.character_refs.length > 0 && (
                     <div className='mt-1 flex items-center gap-1'>
-                      {storyboard.character_refs.map((ref) => {
+                      {storyboard.character_refs.map((ref, refIndex) => {
                         const identifier = ref.startsWith('角色')
                           ? ref.replace('角色', '')
                           : ref;
@@ -531,17 +531,15 @@ export default function PromptsPage({ params }: PromptsPageProps) {
                         ).find((c) => c.identifier === identifier);
                         return configured?.character?.imageData ? (
                           <img
-                            key={identifier}
+                            key={`${refIndex}-${identifier}`}
                             src={configured.character.imageData}
-                            alt={`角色 ${identifier}`}
+                            alt={`角色 ${identifier} (第${refIndex + 1}个)`}
                             className='h-6 w-auto rounded border object-contain'
-                            title={
-                              configured.character.name || `角色 ${identifier}`
-                            }
+                            title={`${configured.character.name || `角色 ${identifier}`} (上传顺序: ${refIndex + 1})`}
                           />
                         ) : (
                           <Badge
-                            key={identifier}
+                            key={`${refIndex}-${identifier}`}
                             variant='outline'
                             className='text-[10px]'
                           >
