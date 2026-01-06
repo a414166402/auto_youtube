@@ -433,9 +433,21 @@ POST /api/youtube/projects/{project_id}/generate/image
       "identifier": "A",
       "image_url": "https://xxx/character_a.png"
     }
-  ]
+  ],
+  "ref_storyboard_index": null
 }
 ```
+
+**请求体（带分镜参考图）**:
+```json
+{
+  "storyboard_index": 2,
+  "character_images": ["base64_image_1", "base64_image_2"],
+  "ref_storyboard_index": 1
+}
+```
+当指定 `ref_storyboard_index` 时，会将该分镜的选中图片追加到角色参考图之后，并在提示词末尾追加场景一致性提示词。
+
 **响应体**:
 ```json
 {
@@ -453,10 +465,14 @@ POST /api/youtube/projects/{project_id}/generate/image
 2. 判断是否有`character_refs`:
    - **有**: 调用`/api/ai/image-generation`，image参数传角色图片URL，`generation_type`记为`image_text_to_image`
    - **无**: 调用`/api/ai/image-generation`，image参数传空字符串，`generation_type`记为`text_to_image`
-3. **追加**生成的图片到该分镜的`images`数组（不是覆盖）
-4. 如果是该分镜**第一张图片**（`images`之前为空），设置`selected_image_index = 0`
-5. 更新项目`status`（根据是否所有分镜都有图片）
-6. 同步返回结果
+3. 如果指定了`ref_storyboard_index`:
+   - 获取参考分镜的选中图片URL
+   - 将参考图片追加到角色参考图数组末尾
+   - 在提示词末尾追加场景一致性提示词（如："保持与参考图片相同的场景风格和色调"）
+4. **追加**生成的图片到该分镜的`images`数组（不是覆盖）
+5. 如果是该分镜**第一张图片**（`images`之前为空），设置`selected_image_index = 0`
+6. 更新项目`status`（根据是否所有分镜都有图片）
+7. 同步返回结果
 
 **图片追加示例**:
 ```
@@ -610,6 +626,7 @@ class GenerateImageRequest(BaseModel):
     """生成单个分镜的图片"""
     storyboard_index: int = Field(..., ge=0)
     character_refs: Optional[List[CharacterRef]] = None  # 角色引用图片
+    ref_storyboard_index: Optional[int] = None  # 参考分镜索引，用于场景一致性
 
 class GenerateVideoRequest(BaseModel):
     """生成单个分镜的视频"""

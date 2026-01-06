@@ -17,7 +17,8 @@ import {
   ZoomIn,
   Pencil,
   Save,
-  Trash2
+  Trash2,
+  Layers
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -121,6 +122,11 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   const [cleaningImages, setCleaningImages] = useState(false);
   const [cleaningVideos, setCleaningVideos] = useState(false);
 
+  // 分镜参考选择状态（每个分镜可选择一个参考分镜）
+  const [refStoryboardIndices, setRefStoryboardIndices] = useState<
+    Map<number, number | null>
+  >(new Map());
+
   // 加载数据
   const loadData = useCallback(async () => {
     try {
@@ -184,10 +190,14 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         }
       }
 
+      // 获取参考分镜索引
+      const refStoryboardIndex = refStoryboardIndices.get(storyboardIndex);
+
       const result = await generateImage(projectId, {
         storyboard_index: storyboardIndex,
         character_images:
-          characterImages.length > 0 ? characterImages : undefined
+          characterImages.length > 0 ? characterImages : undefined,
+        ref_storyboard_index: refStoryboardIndex ?? undefined
       });
 
       if (result.success) {
@@ -962,6 +972,126 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                               }
                             >
                               清除所有角色
+                            </Button>
+                          )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* 选择分镜按钮 */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        className='h-7 w-full gap-1 text-xs'
+                      >
+                        <Layers className='h-3 w-3' />
+                        选择分镜
+                        {refStoryboardIndices.get(index) !== undefined &&
+                          refStoryboardIndices.get(index) !== null && (
+                            <Badge
+                              variant='secondary'
+                              className='ml-1 h-4 px-1 text-[10px]'
+                            >
+                              #{(refStoryboardIndices.get(index) ?? 0) + 1}
+                            </Badge>
+                          )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className='w-72' align='center'>
+                      <div className='space-y-3'>
+                        <div className='text-sm font-medium'>选择参考分镜</div>
+                        <p className='text-muted-foreground text-xs'>
+                          选择其他分镜的已选中图片作为场景参考，保持风格一致性
+                        </p>
+                        {/* 获取有已选中图片的其他分镜 */}
+                        {(() => {
+                          const availableStoryboards = storyboards.filter(
+                            (sb) =>
+                              sb.index !== index &&
+                              sb.selected_image_index !== null &&
+                              sb.images.length > 0
+                          );
+                          if (availableStoryboards.length === 0) {
+                            return (
+                              <p className='text-muted-foreground py-2 text-xs'>
+                                暂无可用分镜，请先在其他分镜中选择图片
+                              </p>
+                            );
+                          }
+                          return (
+                            <div className='max-h-48 space-y-2 overflow-y-auto'>
+                              {availableStoryboards.map((sb) => {
+                                const selectedImage =
+                                  sb.images[sb.selected_image_index!];
+                                const isSelected =
+                                  refStoryboardIndices.get(index) === sb.index;
+                                return (
+                                  <div
+                                    key={sb.index}
+                                    className={`flex cursor-pointer items-center gap-2 rounded border p-2 transition-colors ${
+                                      isSelected
+                                        ? 'border-primary bg-primary/10'
+                                        : 'hover:border-primary/50'
+                                    }`}
+                                    onClick={() => {
+                                      setRefStoryboardIndices((prev) => {
+                                        const next = new Map(prev);
+                                        if (isSelected) {
+                                          next.delete(index);
+                                        } else {
+                                          next.set(index, sb.index);
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                  >
+                                    <Checkbox
+                                      checked={isSelected}
+                                      onCheckedChange={() => {
+                                        setRefStoryboardIndices((prev) => {
+                                          const next = new Map(prev);
+                                          if (isSelected) {
+                                            next.delete(index);
+                                          } else {
+                                            next.set(index, sb.index);
+                                          }
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                    {selectedImage && (
+                                      <img
+                                        src={selectedImage.url}
+                                        alt={`分镜 ${sb.index + 1}`}
+                                        className='h-10 w-10 rounded object-cover'
+                                      />
+                                    )}
+                                    <span className='text-sm'>
+                                      分镜 #{sb.index + 1}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                        {refStoryboardIndices.get(index) !== undefined &&
+                          refStoryboardIndices.get(index) !== null && (
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              className='w-full text-xs'
+                              onClick={() => {
+                                setRefStoryboardIndices((prev) => {
+                                  const next = new Map(prev);
+                                  next.delete(index);
+                                  return next;
+                                });
+                              }}
+                            >
+                              清除选择
                             </Button>
                           )}
                       </div>

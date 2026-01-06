@@ -138,6 +138,7 @@ export interface CharacterRef {
 export interface GenerateImageRequest {
   storyboard_index: number;
   character_images?: string[]; // 角色参考图片数组（支持base64或URL）
+  ref_storyboard_index?: number | null; // 参考分镜索引，用于场景一致性
 }
 
 // 生成视频请求
