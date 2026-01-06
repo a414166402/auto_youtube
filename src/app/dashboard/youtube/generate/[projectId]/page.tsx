@@ -122,10 +122,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   const [cleaningImages, setCleaningImages] = useState(false);
   const [cleaningVideos, setCleaningVideos] = useState(false);
 
-  // 分镜参考选择状态（每个分镜可选择一个参考分镜）
-  const [refStoryboardIndices, setRefStoryboardIndices] = useState<
-    Map<number, number | null>
-  >(new Map());
+  // 注意：分镜参考选择现在存储在 storyboard.ref_storyboard_indexes 中，不再使用本地状态
 
   // 加载数据
   const loadData = useCallback(async () => {
@@ -190,14 +187,11 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         }
       }
 
-      // 获取参考分镜索引
-      const refStoryboardIndex = refStoryboardIndices.get(storyboardIndex);
-
+      // 注意：ref_storyboard_indexes 已存储在 storyboard 中，后端会自动读取
       const result = await generateImage(projectId, {
         storyboard_index: storyboardIndex,
         character_images:
-          characterImages.length > 0 ? characterImages : undefined,
-        ref_storyboard_index: refStoryboardIndex ?? undefined
+          characterImages.length > 0 ? characterImages : undefined
       });
 
       if (result.success) {
@@ -500,6 +494,47 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     }
   };
 
+  // 更新分镜参考索引（多选）
+  const handleUpdateRefStoryboardIndexes = async (
+    storyboardIndex: number,
+    refIndexes: number[]
+  ) => {
+    if (!project) return;
+
+    try {
+      const storyboards = [...project.data.storyboards];
+      storyboards[storyboardIndex] = {
+        ...storyboards[storyboardIndex],
+        ref_storyboard_indexes: refIndexes.length > 0 ? refIndexes : null
+      };
+
+      await updateProject(projectId, { storyboards });
+
+      // 更新本地状态
+      setProject({
+        ...project,
+        data: {
+          ...project.data,
+          storyboards
+        }
+      });
+
+      toast({
+        title: '已更新',
+        description:
+          refIndexes.length > 0
+            ? `分镜 #${storyboardIndex + 1} 参考分镜已更新`
+            : `分镜 #${storyboardIndex + 1} 已清除参考分镜`
+      });
+    } catch (err) {
+      toast({
+        title: '更新失败',
+        description: err instanceof Error ? err.message : '更新参考分镜失败',
+        variant: 'destructive'
+      });
+    }
+  };
+
   // 开始编辑提示词
   const handleStartEditPrompt = (
     storyboardIndex: number,
@@ -779,34 +814,63 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                     )}
                   </div>
                   {/* 角色参考图展示 - 按 character_refs 数组顺序展示，顺序影响上传顺序 */}
-                  {storyboard.character_refs &&
-                  storyboard.character_refs.length > 0 ? (
-                    <div className='mt-1 flex items-center gap-1'>
-                      {storyboard.character_refs.map((ref, refIndex) => {
-                        const identifier = extractIdentifier(ref);
-                        const character = getCharacterForIdentifier(
-                          identifier,
-                          projectMapping,
-                          globalCharacters
-                        );
-                        return character?.imageData ? (
-                          <img
-                            key={`${refIndex}-${identifier}`}
-                            src={character.imageData}
-                            alt={`角色 ${identifier} (第${refIndex + 1}个)`}
-                            className='h-6 w-auto rounded border object-contain'
-                            title={`${character.name || `角色 ${identifier}`} (上传顺序: ${refIndex + 1})`}
-                          />
-                        ) : (
-                          <Badge
-                            key={`${refIndex}-${identifier}`}
-                            variant='outline'
-                            className='text-[10px]'
-                          >
-                            {ref}
-                          </Badge>
-                        );
-                      })}
+                  {/* 以及选择的分镜参考图展示（支持多选） */}
+                  {(storyboard.character_refs &&
+                    storyboard.character_refs.length > 0) ||
+                  (storyboard.ref_storyboard_indexes &&
+                    storyboard.ref_storyboard_indexes.length > 0) ? (
+                    <div className='mt-1 flex flex-wrap items-center gap-1'>
+                      {/* 角色参考图 */}
+                      {storyboard.character_refs &&
+                        storyboard.character_refs.map((ref, refIndex) => {
+                          const identifier = extractIdentifier(ref);
+                          const character = getCharacterForIdentifier(
+                            identifier,
+                            projectMapping,
+                            globalCharacters
+                          );
+                          return character?.imageData ? (
+                            <img
+                              key={`char-${refIndex}-${identifier}`}
+                              src={character.imageData}
+                              alt={`角色 ${identifier} (第${refIndex + 1}个)`}
+                              className='h-6 w-auto rounded border object-contain'
+                              title={`${character.name || `角色 ${identifier}`} (上传顺序: ${refIndex + 1})`}
+                            />
+                          ) : (
+                            <Badge
+                              key={`char-${refIndex}-${identifier}`}
+                              variant='outline'
+                              className='text-[10px]'
+                            >
+                              {ref}
+                            </Badge>
+                          );
+                        })}
+                      {/* 分镜参考图（多选） */}
+                      {storyboard.ref_storyboard_indexes &&
+                        storyboard.ref_storyboard_indexes.map((refIdx) => {
+                          const refStoryboard = storyboards[refIdx];
+                          if (
+                            !refStoryboard ||
+                            refStoryboard.selected_image_index === null
+                          )
+                            return null;
+                          const refImage =
+                            refStoryboard.images[
+                              refStoryboard.selected_image_index
+                            ];
+                          if (!refImage) return null;
+                          return (
+                            <img
+                              key={`ref-${refIdx}`}
+                              src={refImage.url}
+                              alt={`参考分镜 #${refIdx + 1}`}
+                              className='h-6 w-auto rounded border border-dashed border-blue-400 object-contain'
+                              title={`参考分镜 #${refIdx + 1} (场景一致性)`}
+                            />
+                          );
+                        })}
                     </div>
                   ) : (
                     <Badge
@@ -978,7 +1042,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                     </PopoverContent>
                   </Popover>
 
-                  {/* 选择分镜按钮 */}
+                  {/* 选择分镜按钮（多选） */}
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -988,13 +1052,13 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                       >
                         <Layers className='h-3 w-3' />
                         选择分镜
-                        {refStoryboardIndices.get(index) !== undefined &&
-                          refStoryboardIndices.get(index) !== null && (
+                        {storyboard.ref_storyboard_indexes &&
+                          storyboard.ref_storyboard_indexes.length > 0 && (
                             <Badge
                               variant='secondary'
                               className='ml-1 h-4 px-1 text-[10px]'
                             >
-                              #{(refStoryboardIndices.get(index) ?? 0) + 1}
+                              {storyboard.ref_storyboard_indexes.length}
                             </Badge>
                           )}
                       </Button>
@@ -1003,7 +1067,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                       <div className='space-y-3'>
                         <div className='text-sm font-medium'>选择参考分镜</div>
                         <p className='text-muted-foreground text-xs'>
-                          选择其他分镜的已选中图片作为场景参考，保持风格一致性
+                          选择其他分镜的已选中图片作为场景参考，保持风格一致性（可多选）
                         </p>
                         {/* 获取有已选中图片的其他分镜 */}
                         {(() => {
@@ -1020,13 +1084,16 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                               </p>
                             );
                           }
+                          const currentRefs =
+                            storyboard.ref_storyboard_indexes || [];
                           return (
                             <div className='max-h-48 space-y-2 overflow-y-auto'>
                               {availableStoryboards.map((sb) => {
                                 const selectedImage =
                                   sb.images[sb.selected_image_index!];
-                                const isSelected =
-                                  refStoryboardIndices.get(index) === sb.index;
+                                const isSelected = currentRefs.includes(
+                                  sb.index
+                                );
                                 return (
                                   <div
                                     key={sb.index}
@@ -1036,29 +1103,29 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                                         : 'hover:border-primary/50'
                                     }`}
                                     onClick={() => {
-                                      setRefStoryboardIndices((prev) => {
-                                        const next = new Map(prev);
-                                        if (isSelected) {
-                                          next.delete(index);
-                                        } else {
-                                          next.set(index, sb.index);
-                                        }
-                                        return next;
-                                      });
+                                      const newRefs = isSelected
+                                        ? currentRefs.filter(
+                                            (r) => r !== sb.index
+                                          )
+                                        : [...currentRefs, sb.index];
+                                      handleUpdateRefStoryboardIndexes(
+                                        index,
+                                        newRefs
+                                      );
                                     }}
                                   >
                                     <Checkbox
                                       checked={isSelected}
                                       onCheckedChange={() => {
-                                        setRefStoryboardIndices((prev) => {
-                                          const next = new Map(prev);
-                                          if (isSelected) {
-                                            next.delete(index);
-                                          } else {
-                                            next.set(index, sb.index);
-                                          }
-                                          return next;
-                                        });
+                                        const newRefs = isSelected
+                                          ? currentRefs.filter(
+                                              (r) => r !== sb.index
+                                            )
+                                          : [...currentRefs, sb.index];
+                                        handleUpdateRefStoryboardIndexes(
+                                          index,
+                                          newRefs
+                                        );
                                       }}
                                     />
                                     {selectedImage && (
@@ -1077,18 +1144,14 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                             </div>
                           );
                         })()}
-                        {refStoryboardIndices.get(index) !== undefined &&
-                          refStoryboardIndices.get(index) !== null && (
+                        {storyboard.ref_storyboard_indexes &&
+                          storyboard.ref_storyboard_indexes.length > 0 && (
                             <Button
                               variant='ghost'
                               size='sm'
                               className='w-full text-xs'
                               onClick={() => {
-                                setRefStoryboardIndices((prev) => {
-                                  const next = new Map(prev);
-                                  next.delete(index);
-                                  return next;
-                                });
+                                handleUpdateRefStoryboardIndexes(index, []);
                               }}
                             >
                               清除选择

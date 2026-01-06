@@ -231,6 +231,7 @@ CREATE INDEX idx_youtube_projects_status ON youtube_projects((data->>'status'));
 | `storyboards[n].text_to_image` | string | 文生图提示词，生成提示词时填充 |
 | `storyboards[n].image_to_video` | string | 图生视频提示词，生成提示词时填充 |
 | `storyboards[n].character_refs` | array\|null | 角色引用标识，用户编辑时设置 |
+| `storyboards[n].ref_storyboard_indexes` | array\|null | 参考分镜索引列表，用户编辑时设置，用于场景一致性 |
 | `storyboards[n].images` | array | 生成的图片数组，初始为空，每次生成追加 |
 | `storyboards[n].selected_image_index` | int\|null | 选中的图片索引，首次生成时默认为0 |
 | `storyboards[n].videos` | array | 生成的视频数组，初始为空，每次生成追加 |
@@ -399,6 +400,7 @@ POST /api/youtube/projects/{project_id}/generate/prompts
   "text_to_image": "LLM生成的文生图提示词",
   "image_to_video": "LLM生成的图生视频提示词",
   "character_refs": null,
+  "ref_storyboard_indexes": null,
   "is_prompt_edited": false,
   "images": [],
   "selected_image_index": null,
@@ -428,25 +430,9 @@ POST /api/youtube/projects/{project_id}/generate/image
 ```json
 {
   "storyboard_index": 0,
-  "character_refs": [
-    {
-      "identifier": "A",
-      "image_url": "https://xxx/character_a.png"
-    }
-  ],
-  "ref_storyboard_index": null
+  "character_images": ["base64_image_1", "base64_image_2"]
 }
 ```
-
-**请求体（带分镜参考图）**:
-```json
-{
-  "storyboard_index": 2,
-  "character_images": ["base64_image_1", "base64_image_2"],
-  "ref_storyboard_index": 1
-}
-```
-当指定 `ref_storyboard_index` 时，会将该分镜的选中图片追加到角色参考图之后，并在提示词末尾追加场景一致性提示词。
 
 **响应体**:
 ```json
@@ -461,12 +447,12 @@ POST /api/youtube/projects/{project_id}/generate/image
 }
 ```
 **业务逻辑**:
-1. 从项目JSONB获取指定分镜的`text_to_image`提示词
-2. 判断是否有`character_refs`:
-   - **有**: 调用`/api/ai/image-generation`，image参数传角色图片URL，`generation_type`记为`image_text_to_image`
+1. 从项目JSONB获取指定分镜的`text_to_image`提示词和`ref_storyboard_indexes`
+2. 判断是否有`character_images`:
+   - **有**: 调用`/api/ai/image-generation`，image参数传角色图片，`generation_type`记为`image_text_to_image`
    - **无**: 调用`/api/ai/image-generation`，image参数传空字符串，`generation_type`记为`text_to_image`
-3. 如果指定了`ref_storyboard_index`:
-   - 获取参考分镜的选中图片URL
+3. 如果分镜有`ref_storyboard_indexes`（从数据库读取）:
+   - 获取各参考分镜的选中图片URL
    - 将参考图片追加到角色参考图数组末尾
    - 在提示词末尾追加场景一致性提示词（如："保持与参考图片相同的场景风格和色调"）
 4. **追加**生成的图片到该分镜的`images`数组（不是覆盖）
@@ -587,6 +573,7 @@ class Storyboard(BaseModel):
     text_to_image: str                              # 文生图提示词（生成提示词时填充）
     image_to_video: str                             # 图生视频提示词（生成提示词时填充）
     character_refs: Optional[List[str]] = None      # 角色引用标识（用户编辑时设置）
+    ref_storyboard_indexes: Optional[List[int]] = None  # 参考分镜索引列表（用户编辑时设置，用于场景一致性）
     is_prompt_edited: bool = False                  # 是否被手动编辑过
     images: List[GeneratedImage] = []               # 生成的图片数组（初始为空，生成后追加）
     selected_image_index: Optional[int] = None      # 选中的图片索引
@@ -625,8 +612,8 @@ class CharacterRef(BaseModel):
 class GenerateImageRequest(BaseModel):
     """生成单个分镜的图片"""
     storyboard_index: int = Field(..., ge=0)
-    character_refs: Optional[List[CharacterRef]] = None  # 角色引用图片
-    ref_storyboard_index: Optional[int] = None  # 参考分镜索引，用于场景一致性
+    character_images: Optional[List[str]] = None  # 角色参考图片（base64或URL）
+    # 注意：ref_storyboard_indexes 存储在 Storyboard 模型中，后端自动读取
 
 class GenerateVideoRequest(BaseModel):
     """生成单个分镜的视频"""
@@ -798,6 +785,7 @@ def initialize_storyboards_from_llm(llm_response: dict) -> list:
             "text_to_image": item["text_to_image"],
             "image_to_video": item["image_to_video"],
             "character_refs": None,
+            "ref_storyboard_indexes": None,  # 参考分镜索引列表
             "is_prompt_edited": False,
             "images": [],                    # 初始为空数组
             "selected_image_index": None,    # 初始为null

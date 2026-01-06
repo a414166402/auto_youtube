@@ -36,6 +36,7 @@ export interface Storyboard {
   text_to_image: string; // 文生图提示词
   image_to_video: string; // 图生视频提示词
   character_refs?: string[] | null; // 角色引用标识
+  ref_storyboard_indexes?: number[] | null; // 参考分镜索引列表，用于场景一致性
   is_prompt_edited: boolean; // 是否被手动编辑过
   images: GeneratedImage[]; // 生成的图片数组
   selected_image_index: number | null; // 选中的图片索引
@@ -138,7 +139,7 @@ export interface CharacterRef {
 export interface GenerateImageRequest {
   storyboard_index: number;
   character_images?: string[]; // 角色参考图片数组（支持base64或URL）
-  ref_storyboard_index?: number | null; // 参考分镜索引，用于场景一致性
+  // 注意：ref_storyboard_indexes 已移至 Storyboard 模型，由后端自动读取
 }
 
 // 生成视频请求
