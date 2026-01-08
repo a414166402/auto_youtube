@@ -48,12 +48,15 @@ import {
   cleanupMedia
 } from '@/lib/api/youtube';
 import {
-  loadGlobalCharactersAsync,
-  loadProjectMapping,
-  getCharacterForIdentifier,
-  type GlobalCharacter,
-  type ProjectCharacterMapping
-} from '@/lib/character-config';
+  loadGlobalSubjectLibraryAsync,
+  loadProjectSubjectMapping,
+  getSubjectForRef,
+  parseFullRef,
+  type GlobalSubjectLibrary,
+  type ProjectSubjectMapping,
+  SUBJECT_TYPE_ICONS,
+  DEFAULT_SUBJECT_LIBRARY
+} from '@/lib/subject-config';
 import { VideoPlayer } from '@/components/youtube/video-player';
 import type {
   ProjectResponse,
@@ -79,10 +82,10 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [globalCharacters, setGlobalCharacters] = useState<GlobalCharacter[]>(
-    []
+  const [subjectLibrary, setSubjectLibrary] = useState<GlobalSubjectLibrary>(
+    DEFAULT_SUBJECT_LIBRARY
   );
-  const [projectMapping, setProjectMapping] = useState<ProjectCharacterMapping>(
+  const [projectMapping, setProjectMapping] = useState<ProjectSubjectMapping>(
     {}
   );
 
@@ -122,6 +125,19 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   const [cleaningImages, setCleaningImages] = useState(false);
   const [cleaningVideos, setCleaningVideos] = useState(false);
 
+  // 下载状态
+  const [downloadingVideos, setDownloadingVideos] = useState(false);
+  const [downloadingImages, setDownloadingImages] = useState(false);
+
+  // 下载勾选状态（前端状态，与服务器选择分开）
+  // key: `${storyboardIndex}-${imageIndex}` 或 `${storyboardIndex}-${videoIndex}`
+  const [downloadSelectedImages, setDownloadSelectedImages] = useState<
+    Set<string>
+  >(new Set());
+  const [downloadSelectedVideos, setDownloadSelectedVideos] = useState<
+    Set<string>
+  >(new Set());
+
   // 注意：分镜参考选择现在存储在 storyboard.ref_storyboard_indexes 中，不再使用本地状态
 
   // 加载数据
@@ -131,10 +147,10 @@ export default function GeneratePage({ params }: GeneratePageProps) {
       const projectData = await getProject(projectId);
       setProject(projectData);
 
-      // 加载全局角色库和项目映射
-      const characters = await loadGlobalCharactersAsync();
-      setGlobalCharacters(characters);
-      const mapping = loadProjectMapping(projectId);
+      // 加载全局主体库和项目映射
+      const library = await loadGlobalSubjectLibraryAsync();
+      setSubjectLibrary(library);
+      const mapping = loadProjectSubjectMapping(projectId);
       setProjectMapping(mapping);
 
       setError(null);
@@ -149,12 +165,10 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     loadData();
   }, [loadData]);
 
-  // 辅助函数：从 "角色A" 或 "A" 提取标识符
-  const extractIdentifier = (ref: string): string => {
-    if (ref.startsWith('角色')) {
-      return ref.replace('角色', '');
-    }
-    return ref;
+  // 辅助函数：获取主体引用对应的图片
+  const getSubjectImage = (ref: string): string | undefined => {
+    const subject = getSubjectForRef(ref, projectMapping, subjectLibrary);
+    return subject?.imageData;
   };
 
   // 生成单个分镜图片
@@ -167,22 +181,17 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     // 添加到生成中集合
     setGeneratingImageIndices((prev) => new Set(prev).add(storyboardIndex));
     try {
-      // 获取角色引用图片（Base64数据）
+      // 获取主体引用图片（Base64数据）
       // 重要：按照 character_refs 数组的顺序获取图片，顺序会影响图文生图接口的上传顺序
       const characterImages: string[] = [];
       if (storyboard.character_refs && storyboard.character_refs.length > 0) {
         // 按 character_refs 数组顺序遍历，确保上传顺序与 JSON 中的顺序一致
         for (let i = 0; i < storyboard.character_refs.length; i++) {
           const ref = storyboard.character_refs[i];
-          // 从 "角色A" 提取 "A"，然后通过项目映射找到全局角色
-          const identifier = extractIdentifier(ref);
-          const character = getCharacterForIdentifier(
-            identifier,
-            projectMapping,
-            globalCharacters
-          );
-          if (character?.imageData) {
-            characterImages.push(character.imageData);
+          // 通过项目映射找到全局主体
+          const subject = getSubjectForRef(ref, projectMapping, subjectLibrary);
+          if (subject?.imageData) {
+            characterImages.push(subject.imageData);
           }
         }
       }
@@ -276,7 +285,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     }
   };
 
-  // 选择图片
+  // 选择图片（服务器选择，用于后续流程）
   const handleSelectImage = async (
     storyboardIndex: number,
     imageIndex: number
@@ -311,7 +320,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     }
   };
 
-  // 选择视频
+  // 选择视频（服务器选择，用于后续流程）
   const handleSelectVideo = async (
     storyboardIndex: number,
     videoIndex: number
@@ -450,6 +459,186 @@ export default function GeneratePage({ params }: GeneratePageProps) {
       });
     } finally {
       setCleaningVideos(false);
+    }
+  };
+
+  // 切换图片下载勾选
+  const toggleImageDownloadSelect = (
+    storyboardIndex: number,
+    imageIndex: number
+  ) => {
+    const key = `${storyboardIndex}-${imageIndex}`;
+    setDownloadSelectedImages((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // 切换视频下载勾选
+  const toggleVideoDownloadSelect = (
+    storyboardIndex: number,
+    videoIndex: number
+  ) => {
+    const key = `${storyboardIndex}-${videoIndex}`;
+    setDownloadSelectedVideos((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // 全选/取消全选图片下载
+  const toggleAllImagesDownloadSelect = () => {
+    if (!project) return;
+    const allKeys: string[] = [];
+    project.data.storyboards.forEach((sb, sbIndex) => {
+      sb.images.forEach((_, imgIndex) => {
+        allKeys.push(`${sbIndex}-${imgIndex}`);
+      });
+    });
+
+    if (downloadSelectedImages.size === allKeys.length) {
+      setDownloadSelectedImages(new Set());
+    } else {
+      setDownloadSelectedImages(new Set(allKeys));
+    }
+  };
+
+  // 全选/取消全选视频下载
+  const toggleAllVideosDownloadSelect = () => {
+    if (!project) return;
+    const allKeys: string[] = [];
+    project.data.storyboards.forEach((sb, sbIndex) => {
+      sb.videos.forEach((_, vidIndex) => {
+        allKeys.push(`${sbIndex}-${vidIndex}`);
+      });
+    });
+
+    if (downloadSelectedVideos.size === allKeys.length) {
+      setDownloadSelectedVideos(new Set());
+    } else {
+      setDownloadSelectedVideos(new Set(allKeys));
+    }
+  };
+
+  // 下载勾选的图片
+  const handleDownloadSelectedImages = async () => {
+    if (!project) return;
+
+    if (downloadSelectedImages.size === 0) {
+      toast({
+        title: '无可下载图片',
+        description: '请先勾选要下载的图片',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const selectedImages: { url: string; name: string }[] = [];
+    downloadSelectedImages.forEach((key) => {
+      const [sbIndex, imgIndex] = key.split('-').map(Number);
+      const sb = project.data.storyboards[sbIndex];
+      const img = sb?.images[imgIndex];
+      if (img) {
+        selectedImages.push({
+          url: img.url,
+          name: `${project.data.name}_分镜${sbIndex + 1}_图片${imgIndex + 1}.png`
+        });
+      }
+    });
+
+    setDownloadingImages(true);
+    try {
+      for (const image of selectedImages) {
+        const response = await fetch(image.url);
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = image.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      toast({
+        title: '下载完成',
+        description: `已下载 ${selectedImages.length} 张图片`
+      });
+    } catch (err) {
+      toast({
+        title: '下载失败',
+        description: err instanceof Error ? err.message : '下载图片失败',
+        variant: 'destructive'
+      });
+    } finally {
+      setDownloadingImages(false);
+    }
+  };
+
+  // 下载勾选的视频
+  const handleDownloadSelectedVideos = async () => {
+    if (!project) return;
+
+    if (downloadSelectedVideos.size === 0) {
+      toast({
+        title: '无可下载视频',
+        description: '请先勾选要下载的视频',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const selectedVideos: { url: string; name: string }[] = [];
+    downloadSelectedVideos.forEach((key) => {
+      const [sbIndex, vidIndex] = key.split('-').map(Number);
+      const sb = project.data.storyboards[sbIndex];
+      const vid = sb?.videos[vidIndex];
+      if (vid) {
+        selectedVideos.push({
+          url: vid.url,
+          name: `${project.data.name}_分镜${sbIndex + 1}_视频${vidIndex + 1}.mp4`
+        });
+      }
+    });
+
+    setDownloadingVideos(true);
+    try {
+      for (const video of selectedVideos) {
+        const response = await fetch(video.url);
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = video.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      toast({
+        title: '下载完成',
+        description: `已下载 ${selectedVideos.length} 个视频`
+      });
+    } catch (err) {
+      toast({
+        title: '下载失败',
+        description: err instanceof Error ? err.message : '下载视频失败',
+        variant: 'destructive'
+      });
+    } finally {
+      setDownloadingVideos(false);
     }
   };
 
@@ -647,19 +836,19 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     setEditedVideoPrompt('');
   };
 
-  // 获取有效的角色映射（有映射且有图片的）
-  const getValidCharacterMappings = () => {
-    const result: { identifier: string; character: GlobalCharacter }[] = [];
-    const identifiers = ['A', 'B', 'C', 'D', 'E', 'F'];
+  // 获取有效的主体映射（有映射且有图片的）
+  const getValidSubjectMappings = () => {
+    const result: {
+      fullRef: string;
+      subject: (typeof subjectLibrary.character)[0];
+    }[] = [];
 
-    for (const identifier of identifiers) {
-      const character = getCharacterForIdentifier(
-        identifier,
-        projectMapping,
-        globalCharacters
-      );
-      if (character?.imageData) {
-        result.push({ identifier, character });
+    // 遍历所有映射
+    for (const [fullRef, subjectId] of Object.entries(projectMapping)) {
+      if (!subjectId) continue;
+      const subject = getSubjectForRef(fullRef, projectMapping, subjectLibrary);
+      if (subject?.imageData) {
+        result.push({ fullRef, subject });
       }
     }
 
@@ -813,37 +1002,40 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                       </Badge>
                     )}
                   </div>
-                  {/* 角色参考图展示 - 按 character_refs 数组顺序展示，顺序影响上传顺序 */}
+                  {/* 主体参考图展示 - 按 character_refs 数组顺序展示，顺序影响上传顺序 */}
                   {/* 以及选择的分镜参考图展示（支持多选） */}
                   {(storyboard.character_refs &&
                     storyboard.character_refs.length > 0) ||
                   (storyboard.ref_storyboard_indexes &&
                     storyboard.ref_storyboard_indexes.length > 0) ? (
                     <div className='mt-1 flex flex-wrap items-center gap-1'>
-                      {/* 角色参考图 */}
+                      {/* 主体参考图 */}
                       {storyboard.character_refs &&
                         storyboard.character_refs.map((ref, refIndex) => {
-                          const identifier = extractIdentifier(ref);
-                          const character = getCharacterForIdentifier(
-                            identifier,
+                          const subject = getSubjectForRef(
+                            ref,
                             projectMapping,
-                            globalCharacters
+                            subjectLibrary
                           );
-                          return character?.imageData ? (
+                          const parsed = parseFullRef(ref);
+                          const icon = parsed
+                            ? SUBJECT_TYPE_ICONS[parsed.type]
+                            : '❓';
+                          return subject?.imageData ? (
                             <img
-                              key={`char-${refIndex}-${identifier}`}
-                              src={character.imageData}
-                              alt={`角色 ${identifier} (第${refIndex + 1}个)`}
+                              key={`subject-${refIndex}-${ref}`}
+                              src={subject.imageData}
+                              alt={`${ref} (第${refIndex + 1}个)`}
                               className='h-6 w-auto rounded border object-contain'
-                              title={`${character.name || `角色 ${identifier}`} (上传顺序: ${refIndex + 1})`}
+                              title={`${subject.name || ref} (上传顺序: ${refIndex + 1})`}
                             />
                           ) : (
                             <Badge
-                              key={`char-${refIndex}-${identifier}`}
+                              key={`subject-${refIndex}-${ref}`}
                               variant='outline'
                               className='text-[10px]'
                             >
-                              {ref}
+                              {icon} {ref}
                             </Badge>
                           );
                         })}
@@ -962,43 +1154,42 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                     </PopoverTrigger>
                     <PopoverContent className='w-64' align='center'>
                       <div className='space-y-3'>
-                        <div className='text-sm font-medium'>选择角色引用</div>
+                        <div className='text-sm font-medium'>选择主体引用</div>
                         <p className='text-muted-foreground text-xs'>
-                          选择角色后将使用「图文生图」模式（最多3个）
+                          选择主体后将使用「图文生图」模式（最多3个）
                         </p>
-                        {getValidCharacterMappings().length === 0 ? (
+                        {getValidSubjectMappings().length === 0 ? (
                           <p className='text-muted-foreground py-2 text-xs'>
-                            暂无可用角色，请先在Settings页面配置角色参考图
+                            暂无可用主体，请先在Settings页面配置参考图
                           </p>
                         ) : (
                           <div className='space-y-2'>
-                            {getValidCharacterMappings().map(
-                              ({ identifier, character }) => {
-                                const displayRef = `角色${identifier}`;
+                            {getValidSubjectMappings().map(
+                              ({ fullRef, subject }) => {
                                 const currentRefs =
                                   storyboard.character_refs || [];
-                                const isChecked = currentRefs.some(
-                                  (ref) => extractIdentifier(ref) === identifier
-                                );
+                                const isChecked = currentRefs.includes(fullRef);
                                 const canSelect =
                                   isChecked || currentRefs.length < 3;
+                                const parsed = parseFullRef(fullRef);
+                                const icon = parsed
+                                  ? SUBJECT_TYPE_ICONS[parsed.type]
+                                  : '❓';
 
                                 return (
                                   <div
-                                    key={identifier}
+                                    key={fullRef}
                                     className='flex items-center gap-2'
                                   >
                                     <Checkbox
-                                      id={`char-${index}-${identifier}`}
+                                      id={`subject-${index}-${fullRef}`}
                                       checked={isChecked}
                                       disabled={!canSelect}
                                       onCheckedChange={(checked) => {
                                         const newRefs = checked
-                                          ? [...currentRefs, displayRef]
+                                          ? [...currentRefs, fullRef]
                                           : currentRefs.filter(
-                                              (r) =>
-                                                extractIdentifier(r) !==
-                                                identifier
+                                              (r) => r !== fullRef
                                             );
                                         handleUpdateCharacterRefs(
                                           index,
@@ -1007,17 +1198,19 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                                       }}
                                     />
                                     <Label
-                                      htmlFor={`char-${index}-${identifier}`}
+                                      htmlFor={`subject-${index}-${fullRef}`}
                                       className='flex cursor-pointer items-center gap-2 text-sm'
                                     >
-                                      {character.imageData && (
+                                      {subject.imageData && (
                                         <img
-                                          src={character.imageData}
-                                          alt={identifier}
+                                          src={subject.imageData}
+                                          alt={fullRef}
                                           className='h-6 w-6 rounded object-cover'
                                         />
                                       )}
-                                      <span>角色 {identifier}</span>
+                                      <span>
+                                        {icon} {fullRef}
+                                      </span>
                                     </Label>
                                   </div>
                                 );
@@ -1035,7 +1228,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                                 handleUpdateCharacterRefs(index, [])
                               }
                             >
-                              清除所有角色
+                              清除所有主体
                             </Button>
                           )}
                       </div>
@@ -1185,6 +1378,21 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                                 <CheckCircle className='h-2.5 w-2.5 text-white' />
                               </div>
                             )}
+                            {/* 下载勾选框 - 左上角 */}
+                            <div
+                              className='absolute top-1 left-1 z-10'
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Checkbox
+                                checked={downloadSelectedImages.has(
+                                  `${index}-${imgIndex}`
+                                )}
+                                onCheckedChange={() =>
+                                  toggleImageDownloadSelect(index, imgIndex)
+                                }
+                                className='data-[state=checked]:bg-primary h-4 w-4 border-white bg-white/80'
+                              />
+                            </div>
                             {/* 悬停时显示预览按钮 */}
                             <div className='absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100'>
                               <button
@@ -1241,14 +1449,42 @@ export default function GeneratePage({ params }: GeneratePageProps) {
               <ChevronLeft className='h-4 w-4' />
               返回上一步: 提示词编辑
             </Button>
-            <Button
-              onClick={() => setActiveTab('video')}
-              disabled={imageProgress.selected === 0}
-              className='gap-1'
-            >
-              继续下一步: 视频生成
-              <ChevronRight className='h-4 w-4' />
-            </Button>
+            <div className='flex items-center gap-2'>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={toggleAllImagesDownloadSelect}
+              >
+                {downloadSelectedImages.size > 0 &&
+                downloadSelectedImages.size ===
+                  storyboards.reduce((acc, sb) => acc + sb.images.length, 0)
+                  ? '取消全选'
+                  : '全选'}
+              </Button>
+              <Button
+                variant='outline'
+                disabled={
+                  downloadSelectedImages.size === 0 || downloadingImages
+                }
+                className='gap-1'
+                onClick={handleDownloadSelectedImages}
+              >
+                {downloadingImages ? (
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                ) : (
+                  <Download className='h-4 w-4' />
+                )}
+                下载勾选图片 ({downloadSelectedImages.size})
+              </Button>
+              <Button
+                onClick={() => setActiveTab('video')}
+                disabled={imageProgress.selected === 0}
+                className='gap-1'
+              >
+                继续下一步: 视频生成
+                <ChevronRight className='h-4 w-4' />
+              </Button>
+            </div>
           </div>
         </TabsContent>
 
@@ -1459,6 +1695,21 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                                     <CheckCircle className='h-2.5 w-2.5 text-white' />
                                   </div>
                                 )}
+                                {/* 下载勾选框 - 左上角 */}
+                                <div
+                                  className='absolute top-1 left-1 z-10'
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Checkbox
+                                    checked={downloadSelectedVideos.has(
+                                      `${index}-${vidIndex}`
+                                    )}
+                                    onCheckedChange={() =>
+                                      toggleVideoDownloadSelect(index, vidIndex)
+                                    }
+                                    className='data-[state=checked]:bg-primary h-4 w-4 border-white bg-white/80'
+                                  />
+                                </div>
                                 {/* 悬停时显示播放按钮 */}
                                 <div className='absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100'>
                                   <button
@@ -1519,10 +1770,33 @@ export default function GeneratePage({ params }: GeneratePageProps) {
               <ChevronLeft className='h-4 w-4' />
               返回上一步: 图片生成
             </Button>
-            <Button disabled={videoProgress.selected === 0} className='gap-1'>
-              <Download className='h-4 w-4' />
-              下载所有选中视频
-            </Button>
+            <div className='flex items-center gap-2'>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={toggleAllVideosDownloadSelect}
+              >
+                {downloadSelectedVideos.size > 0 &&
+                downloadSelectedVideos.size ===
+                  storyboards.reduce((acc, sb) => acc + sb.videos.length, 0)
+                  ? '取消全选'
+                  : '全选'}
+              </Button>
+              <Button
+                disabled={
+                  downloadSelectedVideos.size === 0 || downloadingVideos
+                }
+                className='gap-1'
+                onClick={handleDownloadSelectedVideos}
+              >
+                {downloadingVideos ? (
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                ) : (
+                  <Download className='h-4 w-4' />
+                )}
+                下载勾选视频 ({downloadSelectedVideos.size})
+              </Button>
+            </div>
           </div>
         </TabsContent>
       </Tabs>

@@ -13,6 +13,7 @@ export { PromptEditDialog } from './prompt-edit-dialog';
 export { PromptHistoryDialog } from './prompt-history';
 export { CharacterMappingCard } from './character-mapping-card';
 export { GlobalCharacterCard } from './global-character-card';
+export { GlobalSubjectCard } from './global-subject-card';
 export { ImageGenerationCard } from './image-generation-card';
 export { ImageSelector } from './image-selector';
 export { VideoGenerationCard } from './video-generation-card';

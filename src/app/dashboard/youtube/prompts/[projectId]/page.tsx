@@ -10,7 +10,10 @@ import {
   RefreshCw,
   Save,
   Settings,
-  X
+  X,
+  Users,
+  Package,
+  Bug
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import {
   getProject,
@@ -40,16 +44,21 @@ import {
   downloadJson
 } from '@/lib/api/youtube';
 import {
-  loadGlobalCharactersAsync,
-  loadProjectMapping,
-  saveProjectMapping,
-  updateProjectMapping,
-  getConfiguredCharactersForProject,
-  type GlobalCharacter,
-  type ProjectCharacterMapping,
-  type PromptIdentifier,
-  PROMPT_IDENTIFIERS
-} from '@/lib/character-config';
+  loadGlobalSubjectLibraryAsync,
+  loadProjectSubjectMapping,
+  saveProjectSubjectMapping,
+  updateProjectSubjectMapping,
+  getSubjectForRef,
+  extractSubjectRefs,
+  parseFullRef,
+  generateFullRef,
+  type GlobalSubjectLibrary,
+  type ProjectSubjectMapping,
+  type SubjectType,
+  SUBJECT_TYPE_LABELS,
+  SUBJECT_TYPE_ICONS,
+  DEFAULT_SUBJECT_LIBRARY
+} from '@/lib/subject-config';
 import type { ProjectResponse, Storyboard } from '@/types/youtube';
 
 interface PromptsPageProps {
@@ -69,14 +78,15 @@ export default function PromptsPage({ params }: PromptsPageProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [globalCharacters, setGlobalCharacters] = useState<GlobalCharacter[]>(
-    []
+  const [subjectLibrary, setSubjectLibrary] = useState<GlobalSubjectLibrary>(
+    DEFAULT_SUBJECT_LIBRARY
   );
-  const [projectMapping, setProjectMapping] = useState<ProjectCharacterMapping>(
+  const [projectMapping, setProjectMapping] = useState<ProjectSubjectMapping>(
     {}
   );
   const [instruction, setInstruction] = useState('不需要任何改编');
   const [isMappingOpen, setIsMappingOpen] = useState(false);
+  const [mappingTab, setMappingTab] = useState<SubjectType>('character');
 
   // 编辑状态
   const [editedStoryboards, setEditedStoryboards] = useState<Storyboard[]>([]);
@@ -90,18 +100,22 @@ export default function PromptsPage({ params }: PromptsPageProps) {
       setProject(projectData);
       setEditedStoryboards(projectData.data.storyboards);
 
-      // 加载全局角色库
-      const characters = await loadGlobalCharactersAsync();
-      setGlobalCharacters(characters);
+      // 加载全局主体库
+      const library = await loadGlobalSubjectLibraryAsync();
+      setSubjectLibrary(library);
 
-      // 加载项目级角色映射
-      const mapping = loadProjectMapping(projectId);
+      // 加载项目级主体映射
+      const mapping = loadProjectSubjectMapping(projectId);
       setProjectMapping(mapping);
 
-      // 如果有全局角色但没有配置映射，自动展开映射配置区域
-      const hasGlobalChars = characters.some((c) => c.imageData);
+      // 如果有全局主体但没有配置映射，自动展开映射配置区域
+      const hasGlobalSubjects = [
+        ...library.character,
+        ...library.object,
+        ...library.creature
+      ].some((s) => s.imageData);
       const hasMapping = Object.values(mapping).some((v) => v !== null);
-      if (hasGlobalChars && !hasMapping) {
+      if (hasGlobalSubjects && !hasMapping) {
         setIsMappingOpen(true);
       }
 
@@ -135,28 +149,26 @@ export default function PromptsPage({ params }: PromptsPageProps) {
     setHasChanges(true);
   };
 
-  // 更新项目级角色映射
-  const handleMappingChange = (
-    identifier: PromptIdentifier,
-    globalCharacterId: number | null
-  ) => {
-    const newMapping = updateProjectMapping(
+  // 更新项目级主体映射
+  const handleMappingChange = (fullRef: string, subjectId: string | null) => {
+    const newMapping = updateProjectSubjectMapping(
       projectMapping,
-      identifier,
-      globalCharacterId
+      fullRef,
+      subjectId
     );
     setProjectMapping(newMapping);
-    saveProjectMapping(projectId, newMapping);
+    saveProjectSubjectMapping(projectId, newMapping);
   };
 
-  // 获取有图片的全局角色
-  const availableGlobalCharacters = globalCharacters.filter((c) => c.imageData);
+  // 获取特定类型有图片的主体
+  const getAvailableSubjects = (type: SubjectType) => {
+    return subjectLibrary[type].filter((s) => s.imageData);
+  };
 
-  // 获取已配置的角色列表
-  const configuredCharacters = getConfiguredCharactersForProject(
-    projectMapping,
-    globalCharacters
-  );
+  // 获取所有已配置的主体数量
+  const getConfiguredCount = () => {
+    return Object.values(projectMapping).filter((v) => v !== null).length;
+  };
 
   // 保存所有修改
   const handleSaveAll = async () => {
@@ -239,6 +251,13 @@ export default function PromptsPage({ params }: PromptsPageProps) {
   // 导航到下一步 - 图片生成
   const handleNextStep = () => {
     router.push(`/dashboard/youtube/generate/${projectId}`);
+  };
+
+  // Tab图标映射
+  const tabIcons: Record<SubjectType, React.ReactNode> = {
+    character: <Users className='h-4 w-4' />,
+    object: <Package className='h-4 w-4' />,
+    creature: <Bug className='h-4 w-4' />
   };
 
   if (loading) {
@@ -363,7 +382,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         </div>
       </div>
 
-      {/* 项目角色映射配置 */}
+      {/* 项目主体映射配置 */}
       <Card>
         <Collapsible open={isMappingOpen} onOpenChange={setIsMappingOpen}>
           <CollapsibleTrigger asChild>
@@ -371,11 +390,11 @@ export default function PromptsPage({ params }: PromptsPageProps) {
               <div className='flex items-center justify-between'>
                 <CardTitle className='flex items-center gap-2 text-base'>
                   <Settings className='h-4 w-4' />
-                  项目角色映射配置
+                  项目主体映射配置
                 </CardTitle>
                 <div className='flex items-center gap-2'>
                   <Badge variant='secondary'>
-                    {configuredCharacters.length} 个已配置
+                    {getConfiguredCount()} 个已配置
                   </Badge>
                   <ChevronRight
                     className={`h-4 w-4 transition-transform ${isMappingOpen ? 'rotate-90' : ''}`}
@@ -386,88 +405,141 @@ export default function PromptsPage({ params }: PromptsPageProps) {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <CardContent className='pt-0'>
-              {availableGlobalCharacters.length === 0 ? (
-                <Alert>
-                  <AlertDescription>
-                    暂无可用角色，请先在{' '}
-                    <a
-                      href='/dashboard/youtube/settings'
-                      className='text-blue-500 hover:underline'
-                    >
-                      Settings 页面
-                    </a>{' '}
-                    上传角色参考图
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <div className='space-y-3'>
-                  <p className='text-muted-foreground text-sm'>
-                    配置提示词中的角色A/B/C对应哪个全局角色，用于图片生成时的角色引用
-                  </p>
-                  <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-                    {PROMPT_IDENTIFIERS.map((identifier) => (
-                      <div
-                        key={identifier}
-                        className='flex items-center gap-3 rounded-lg border p-2'
-                      >
-                        <div className='bg-primary text-primary-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold'>
-                          {identifier}
-                        </div>
-                        <Select
-                          value={
-                            projectMapping[identifier]?.toString() || 'none'
-                          }
-                          onValueChange={(value) =>
-                            handleMappingChange(
-                              identifier,
-                              value === 'none' ? null : parseInt(value, 10)
-                            )
-                          }
-                        >
-                          <SelectTrigger className='flex-1'>
-                            <SelectValue placeholder='选择对应角色' />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value='none'>未映射</SelectItem>
-                            {availableGlobalCharacters.map((char) => (
-                              <SelectItem
-                                key={char.id}
-                                value={char.id.toString()}
+              <Tabs
+                value={mappingTab}
+                onValueChange={(v) => setMappingTab(v as SubjectType)}
+              >
+                <TabsList className='mb-4'>
+                  <TabsTrigger value='character' className='gap-1'>
+                    {tabIcons.character}
+                    角色 ({subjectLibrary.character.length})
+                  </TabsTrigger>
+                  <TabsTrigger value='object' className='gap-1'>
+                    {tabIcons.object}
+                    物体 ({subjectLibrary.object.length})
+                  </TabsTrigger>
+                  <TabsTrigger value='creature' className='gap-1'>
+                    {tabIcons.creature}
+                    生物 ({subjectLibrary.creature.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                {(['character', 'object', 'creature'] as SubjectType[]).map(
+                  (type) => {
+                    const subjects = subjectLibrary[type];
+                    const availableSubjects = getAvailableSubjects(type);
+                    const typeLabel = SUBJECT_TYPE_LABELS[type];
+
+                    return (
+                      <TabsContent key={type} value={type}>
+                        {subjects.length === 0 ? (
+                          <Alert>
+                            <AlertDescription>
+                              暂无{typeLabel}，请先在{' '}
+                              <a
+                                href='/dashboard/youtube/settings'
+                                className='text-blue-500 hover:underline'
                               >
-                                <div className='flex items-center gap-2'>
-                                  <img
-                                    src={char.imageData}
-                                    alt={`角色 ${char.id}`}
-                                    className='h-5 w-5 rounded object-cover'
-                                  />
-                                  角色 {char.id}
-                                  {char.name && ` - ${char.name}`}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {projectMapping[identifier] && (
-                          <div className='h-8 w-8 shrink-0 overflow-hidden rounded'>
-                            {(() => {
-                              const char = globalCharacters.find(
-                                (c) => c.id === projectMapping[identifier]
-                              );
-                              return char?.imageData ? (
-                                <img
-                                  src={char.imageData}
-                                  alt=''
-                                  className='h-full w-full object-cover'
-                                />
-                              ) : null;
-                            })()}
+                                Settings 页面
+                              </a>{' '}
+                              添加{typeLabel}
+                            </AlertDescription>
+                          </Alert>
+                        ) : availableSubjects.length === 0 ? (
+                          <Alert>
+                            <AlertDescription>
+                              {typeLabel}库中没有已配置图片的{typeLabel}，请先在{' '}
+                              <a
+                                href='/dashboard/youtube/settings'
+                                className='text-blue-500 hover:underline'
+                              >
+                                Settings 页面
+                              </a>{' '}
+                              上传参考图
+                            </AlertDescription>
+                          </Alert>
+                        ) : (
+                          <div className='space-y-3'>
+                            <p className='text-muted-foreground text-sm'>
+                              配置提示词中的{typeLabel}A/B/C对应哪个全局
+                              {typeLabel}，用于图片生成时的引用
+                            </p>
+                            <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+                              {subjects.map((subject) => {
+                                const fullRef = generateFullRef(
+                                  type,
+                                  subject.identifier
+                                );
+                                const currentMapping = projectMapping[fullRef];
+
+                                return (
+                                  <div
+                                    key={subject.id}
+                                    className='flex items-center gap-3 rounded-lg border p-2'
+                                  >
+                                    <div className='bg-primary text-primary-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold'>
+                                      {subject.identifier}
+                                    </div>
+                                    <Select
+                                      value={currentMapping || 'none'}
+                                      onValueChange={(value) =>
+                                        handleMappingChange(
+                                          fullRef,
+                                          value === 'none' ? null : value
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className='flex-1'>
+                                        <SelectValue
+                                          placeholder={`选择对应${typeLabel}`}
+                                        />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value='none'>
+                                          未映射
+                                        </SelectItem>
+                                        {availableSubjects.map((s) => (
+                                          <SelectItem key={s.id} value={s.id}>
+                                            <div className='flex items-center gap-2'>
+                                              <img
+                                                src={s.imageData}
+                                                alt={`${typeLabel} ${s.identifier}`}
+                                                className='h-5 w-5 rounded object-cover'
+                                              />
+                                              {typeLabel} {s.identifier}
+                                              {s.name && ` - ${s.name}`}
+                                            </div>
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {currentMapping && (
+                                      <div className='h-8 w-8 shrink-0 overflow-hidden rounded'>
+                                        {(() => {
+                                          const mapped = availableSubjects.find(
+                                            (s) => s.id === currentMapping
+                                          );
+                                          return mapped?.imageData ? (
+                                            <img
+                                              src={mapped.imageData}
+                                              alt=''
+                                              className='h-full w-full object-cover'
+                                            />
+                                          ) : null;
+                                        })()}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                      </TabsContent>
+                    );
+                  }
+                )}
+              </Tabs>
             </CardContent>
           </CollapsibleContent>
         </Collapsible>
@@ -503,238 +575,14 @@ export default function PromptsPage({ params }: PromptsPageProps) {
       ) : (
         <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4'>
           {storyboards.map((storyboard, index) => (
-            <Card key={index} className='flex flex-col'>
-              <CardHeader className='pb-2'>
-                <div className='flex items-center justify-between'>
-                  <CardTitle className='text-sm'>
-                    分镜 #{storyboard.index + 1}
-                  </CardTitle>
-                  <div className='flex items-center gap-1'>
-                    {storyboard.is_prompt_edited && (
-                      <Badge variant='secondary' className='text-[10px]'>
-                        已编辑
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                {/* 角色引用展示 - 按 character_refs 数组顺序展示，顺序影响上传顺序 */}
-                {storyboard.character_refs &&
-                  storyboard.character_refs.length > 0 && (
-                    <div className='mt-1 flex items-center gap-1'>
-                      {storyboard.character_refs.map((ref, refIndex) => {
-                        const identifier = ref.startsWith('角色')
-                          ? ref.replace('角色', '')
-                          : ref;
-                        const configured = getConfiguredCharactersForProject(
-                          projectMapping,
-                          globalCharacters
-                        ).find((c) => c.identifier === identifier);
-                        return configured?.character?.imageData ? (
-                          <img
-                            key={`${refIndex}-${identifier}`}
-                            src={configured.character.imageData}
-                            alt={`角色 ${identifier} (第${refIndex + 1}个)`}
-                            className='h-6 w-auto rounded border object-contain'
-                            title={`${configured.character.name || `角色 ${identifier}`} (上传顺序: ${refIndex + 1})`}
-                          />
-                        ) : (
-                          <Badge
-                            key={`${refIndex}-${identifier}`}
-                            variant='outline'
-                            className='text-[10px]'
-                          >
-                            {ref}
-                          </Badge>
-                        );
-                      })}
-                    </div>
-                  )}
-              </CardHeader>
-              <CardContent className='flex-1 space-y-3'>
-                {/* 文生图提示词 */}
-                <div className='space-y-1'>
-                  <Label className='text-xs'>文生图提示词</Label>
-                  <Textarea
-                    value={storyboard.text_to_image}
-                    onChange={(e) =>
-                      handleUpdateStoryboard(
-                        index,
-                        'text_to_image',
-                        e.target.value
-                      )
-                    }
-                    rows={3}
-                    className='resize-none text-xs'
-                    placeholder='输入文生图提示词...'
-                  />
-                </div>
-
-                {/* 图生视频提示词 */}
-                <div className='space-y-1'>
-                  <Label className='text-xs'>图生视频提示词</Label>
-                  <Textarea
-                    value={storyboard.image_to_video}
-                    onChange={(e) =>
-                      handleUpdateStoryboard(
-                        index,
-                        'image_to_video',
-                        e.target.value
-                      )
-                    }
-                    rows={2}
-                    className='resize-none text-xs'
-                    placeholder='输入图生视频提示词...'
-                  />
-                </div>
-
-                {/* 角色引用选择 */}
-                <div className='space-y-1'>
-                  <div className='flex items-center justify-between'>
-                    <Label className='text-xs'>角色引用</Label>
-                    <span className='text-muted-foreground text-[10px]'>
-                      {storyboard.character_refs?.length || 0}/3
-                    </span>
-                  </div>
-                  <div className='flex flex-wrap items-center gap-1'>
-                    {(() => {
-                      // 获取已配置的角色（有映射且有图片）
-                      const configuredChars = getConfiguredCharactersForProject(
-                        projectMapping,
-                        globalCharacters
-                      );
-                      const currentRefs = storyboard.character_refs || [];
-
-                      // 辅助函数：从 "角色A" 或 "A" 提取标识符
-                      const extractIdentifier = (ref: string): string => {
-                        if (ref.startsWith('角色')) {
-                          return ref.replace('角色', '');
-                        }
-                        return ref;
-                      };
-
-                      // 辅助函数：标准化为 "角色X" 格式
-                      const toDisplayFormat = (identifier: string): string => {
-                        return identifier.startsWith('角色')
-                          ? identifier
-                          : `角色${identifier}`;
-                      };
-
-                      // 获取已选中角色的信息
-                      const selectedChars = currentRefs.map((ref) => {
-                        const id = extractIdentifier(ref);
-                        const configured = configuredChars.find(
-                          (c) => c.identifier === id
-                        );
-                        return {
-                          ref,
-                          identifier: id,
-                          character: configured?.character
-                        };
-                      });
-
-                      // 获取可添加的角色（已配置但未选中）
-                      const availableToAdd = configuredChars.filter(
-                        (c) =>
-                          !currentRefs.some(
-                            (ref) => extractIdentifier(ref) === c.identifier
-                          )
-                      );
-
-                      if (configuredChars.length === 0) {
-                        return (
-                          <p className='text-muted-foreground text-[10px]'>
-                            请先配置角色映射
-                          </p>
-                        );
-                      }
-
-                      return (
-                        <>
-                          {/* 已选中的角色 */}
-                          {selectedChars.map(
-                            ({ ref, identifier, character }) => (
-                              <Badge
-                                key={ref}
-                                variant='secondary'
-                                className='hover:bg-destructive/20 cursor-pointer gap-0.5 px-1.5 py-0.5 text-[10px]'
-                                onClick={() => {
-                                  const newRefs = currentRefs.filter(
-                                    (r) => r !== ref
-                                  );
-                                  handleUpdateStoryboard(
-                                    index,
-                                    'character_refs',
-                                    newRefs
-                                  );
-                                }}
-                              >
-                                {character?.imageData && (
-                                  <img
-                                    src={character.imageData}
-                                    alt={identifier}
-                                    className='h-3 w-3 rounded object-cover'
-                                  />
-                                )}
-                                {identifier}
-                                <X className='h-2.5 w-2.5' />
-                              </Badge>
-                            )
-                          )}
-
-                          {/* 添加角色按钮 */}
-                          {currentRefs.length < 3 &&
-                            availableToAdd.length > 0 && (
-                              <Select
-                                value=''
-                                onValueChange={(value) => {
-                                  if (value && currentRefs.length < 3) {
-                                    const newRefs = [
-                                      ...currentRefs,
-                                      toDisplayFormat(value)
-                                    ];
-                                    handleUpdateStoryboard(
-                                      index,
-                                      'character_refs',
-                                      newRefs
-                                    );
-                                  }
-                                }}
-                              >
-                                <SelectTrigger className='h-5 w-auto px-1.5 text-[10px]'>
-                                  <span className='text-muted-foreground'>
-                                    + 添加
-                                  </span>
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableToAdd.map(
-                                    ({ identifier, character }) => (
-                                      <SelectItem
-                                        key={identifier}
-                                        value={identifier}
-                                      >
-                                        <div className='flex items-center gap-1 text-xs'>
-                                          {character.imageData && (
-                                            <img
-                                              src={character.imageData}
-                                              alt={identifier}
-                                              className='h-4 w-4 rounded object-cover'
-                                            />
-                                          )}
-                                          {identifier}
-                                        </div>
-                                      </SelectItem>
-                                    )
-                                  )}
-                                </SelectContent>
-                              </Select>
-                            )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <StoryboardPromptCard
+              key={index}
+              storyboard={storyboard}
+              index={index}
+              subjectLibrary={subjectLibrary}
+              projectMapping={projectMapping}
+              onUpdate={handleUpdateStoryboard}
+            />
           ))}
         </div>
       )}
@@ -782,5 +630,245 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         </div>
       )}
     </div>
+  );
+}
+
+// 分镜提示词卡片组件
+interface StoryboardPromptCardProps {
+  storyboard: Storyboard;
+  index: number;
+  subjectLibrary: GlobalSubjectLibrary;
+  projectMapping: ProjectSubjectMapping;
+  onUpdate: (
+    index: number,
+    field: keyof Storyboard,
+    value: string | string[]
+  ) => void;
+}
+
+function StoryboardPromptCard({
+  storyboard,
+  index,
+  subjectLibrary,
+  projectMapping,
+  onUpdate
+}: StoryboardPromptCardProps) {
+  // 从提示词中提取所有主体引用
+  const allRefs = extractSubjectRefs(storyboard.text_to_image || '');
+  const currentRefs = storyboard.character_refs || [];
+
+  // 获取所有已配置图片的主体（用于手动添加）
+  const getAllConfiguredSubjects = () => {
+    const result: {
+      fullRef: string;
+      subject: (typeof subjectLibrary.character)[0];
+    }[] = [];
+
+    for (const type of ['character', 'object', 'creature'] as SubjectType[]) {
+      for (const subject of subjectLibrary[type]) {
+        if (subject.imageData) {
+          const fullRef = generateFullRef(type, subject.identifier);
+          // 检查是否有映射
+          if (projectMapping[fullRef]) {
+            result.push({ fullRef, subject });
+          }
+        }
+      }
+    }
+
+    return result;
+  };
+
+  const configuredSubjects = getAllConfiguredSubjects();
+
+  // 获取可添加的主体（已配置但未选中）
+  const availableToAdd = configuredSubjects.filter(
+    ({ fullRef }) => !currentRefs.includes(fullRef)
+  );
+
+  // 获取主体的显示信息
+  const getSubjectDisplay = (fullRef: string) => {
+    const subject = getSubjectForRef(fullRef, projectMapping, subjectLibrary);
+    return subject;
+  };
+
+  return (
+    <Card className='flex flex-col'>
+      <CardHeader className='pb-2'>
+        <div className='flex items-center justify-between'>
+          <CardTitle className='text-sm'>
+            分镜 #{storyboard.index + 1}
+          </CardTitle>
+          <div className='flex items-center gap-1'>
+            {storyboard.is_prompt_edited && (
+              <Badge variant='secondary' className='text-[10px]'>
+                已编辑
+              </Badge>
+            )}
+          </div>
+        </div>
+        {/* 主体引用展示 */}
+        {currentRefs.length > 0 && (
+          <div className='mt-1 flex flex-wrap items-center gap-1'>
+            {currentRefs.map((ref, refIndex) => {
+              const subject = getSubjectDisplay(ref);
+              const parsed = parseFullRef(ref);
+              const icon = parsed ? SUBJECT_TYPE_ICONS[parsed.type] : '❓';
+
+              return subject?.imageData ? (
+                <img
+                  key={`${refIndex}-${ref}`}
+                  src={subject.imageData}
+                  alt={`${ref} (第${refIndex + 1}个)`}
+                  className='h-6 w-auto rounded border object-contain'
+                  title={`${subject.name || ref} (上传顺序: ${refIndex + 1})`}
+                />
+              ) : (
+                <Badge
+                  key={`${refIndex}-${ref}`}
+                  variant='outline'
+                  className='text-[10px]'
+                >
+                  {icon} {ref}
+                </Badge>
+              );
+            })}
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className='flex-1 space-y-3'>
+        {/* 文生图提示词 */}
+        <div className='space-y-1'>
+          <Label className='text-xs'>文生图提示词</Label>
+          <Textarea
+            value={storyboard.text_to_image}
+            onChange={(e) => onUpdate(index, 'text_to_image', e.target.value)}
+            rows={3}
+            className='resize-none text-xs'
+            placeholder='输入文生图提示词...'
+          />
+          {/* 显示提示词中检测到的主体引用 */}
+          {allRefs.length > 0 && (
+            <div className='flex flex-wrap gap-1'>
+              <span className='text-muted-foreground text-[10px]'>检测到:</span>
+              {allRefs.map((ref) => {
+                const parsed = parseFullRef(ref);
+                const icon = parsed ? SUBJECT_TYPE_ICONS[parsed.type] : '❓';
+                const isMapped = !!projectMapping[ref];
+                return (
+                  <Badge
+                    key={ref}
+                    variant={isMapped ? 'default' : 'outline'}
+                    className='text-[10px]'
+                  >
+                    {icon} {ref}
+                  </Badge>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 图生视频提示词 */}
+        <div className='space-y-1'>
+          <Label className='text-xs'>图生视频提示词</Label>
+          <Textarea
+            value={storyboard.image_to_video}
+            onChange={(e) => onUpdate(index, 'image_to_video', e.target.value)}
+            rows={2}
+            className='resize-none text-xs'
+            placeholder='输入图生视频提示词...'
+          />
+        </div>
+
+        {/* 主体引用选择 */}
+        <div className='space-y-1'>
+          <div className='flex items-center justify-between'>
+            <Label className='text-xs'>主体引用</Label>
+            <span className='text-muted-foreground text-[10px]'>
+              {currentRefs.length}/3
+            </span>
+          </div>
+          <div className='flex flex-wrap items-center gap-1'>
+            {configuredSubjects.length === 0 ? (
+              <p className='text-muted-foreground text-[10px]'>
+                请先配置主体映射
+              </p>
+            ) : (
+              <>
+                {/* 已选中的主体 */}
+                {currentRefs.map((ref) => {
+                  const subject = getSubjectDisplay(ref);
+                  const parsed = parseFullRef(ref);
+                  const icon = parsed ? SUBJECT_TYPE_ICONS[parsed.type] : '❓';
+
+                  return (
+                    <Badge
+                      key={ref}
+                      variant='secondary'
+                      className='hover:bg-destructive/20 cursor-pointer gap-0.5 px-1.5 py-0.5 text-[10px]'
+                      onClick={() => {
+                        const newRefs = currentRefs.filter((r) => r !== ref);
+                        onUpdate(index, 'character_refs', newRefs);
+                      }}
+                    >
+                      {subject?.imageData && (
+                        <img
+                          src={subject.imageData}
+                          alt={ref}
+                          className='h-3 w-3 rounded object-cover'
+                        />
+                      )}
+                      {icon} {ref}
+                      <X className='h-2.5 w-2.5' />
+                    </Badge>
+                  );
+                })}
+
+                {/* 添加主体按钮 */}
+                {currentRefs.length < 3 && availableToAdd.length > 0 && (
+                  <Select
+                    value=''
+                    onValueChange={(value) => {
+                      if (value && currentRefs.length < 3) {
+                        const newRefs = [...currentRefs, value];
+                        onUpdate(index, 'character_refs', newRefs);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className='h-5 w-auto px-1.5 text-[10px]'>
+                      <span className='text-muted-foreground'>+ 添加</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableToAdd.map(({ fullRef, subject }) => {
+                        const parsed = parseFullRef(fullRef);
+                        const icon = parsed
+                          ? SUBJECT_TYPE_ICONS[parsed.type]
+                          : '❓';
+
+                        return (
+                          <SelectItem key={fullRef} value={fullRef}>
+                            <div className='flex items-center gap-1 text-xs'>
+                              {subject.imageData && (
+                                <img
+                                  src={subject.imageData}
+                                  alt={fullRef}
+                                  className='h-4 w-4 rounded object-cover'
+                                />
+                              )}
+                              {icon} {fullRef}
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
