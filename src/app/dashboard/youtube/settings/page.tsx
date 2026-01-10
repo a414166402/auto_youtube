@@ -12,7 +12,7 @@ import {
   Plus,
   Users,
   Package,
-  Bug
+  Image
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -246,13 +246,13 @@ export default function SettingsPage() {
 
   const characterStats = getStats('character');
   const objectStats = getStats('object');
-  const creatureStats = getStats('creature');
+  const sceneStats = getStats('scene');
 
   // Tab图标映射
   const tabIcons: Record<SubjectType, React.ReactNode> = {
     character: <Users className='h-4 w-4' />,
     object: <Package className='h-4 w-4' />,
-    creature: <Bug className='h-4 w-4' />
+    scene: <Image className='h-4 w-4' />
   };
 
   return (
@@ -268,7 +268,7 @@ export default function SettingsPage() {
           <div>
             <h1 className='text-2xl font-bold'>全局主体库</h1>
             <p className='text-muted-foreground text-sm'>
-              管理角色、物体、生物的参考图，所有项目共享
+              管理角色、物品、场景的参考图，所有项目共享
             </p>
           </div>
         </div>
@@ -279,10 +279,10 @@ export default function SettingsPage() {
         <AlertCircle className='h-4 w-4' />
         <AlertDescription>
           <strong>全局主体库</strong>
-          ：在此上传角色/物体/生物的参考图和名称，所有项目共享。
+          ：在此上传角色/物品/场景的参考图和名称，所有项目共享。
           <br />
           <strong>项目级映射</strong>
-          ：在各项目的提示词编辑页面配置&ldquo;角色A/物体B/生物C对应哪个全局主体&rdquo;。
+          ：在各项目的提示词编辑页面配置&ldquo;角色A/物品B/场景C对应哪个全局主体&rdquo;。
           <br />
           <strong>动态添加</strong>
           ：点击&ldquo;添加&rdquo;按钮按顺序添加新主体（A→B→C...），最多支持26个。
@@ -298,11 +298,11 @@ export default function SettingsPage() {
           </div>
           <div className='flex items-center gap-1'>
             <Package className='h-4 w-4' />
-            物体: {objectStats.configured}/{objectStats.total}
+            物品: {objectStats.configured}/{objectStats.total}
           </div>
           <div className='flex items-center gap-1'>
-            <Bug className='h-4 w-4' />
-            生物: {creatureStats.configured}/{creatureStats.total}
+            <Image className='h-4 w-4' />
+            场景: {sceneStats.configured}/{sceneStats.total}
           </div>
         </div>
         {lastSaved && (
@@ -330,61 +330,57 @@ export default function SettingsPage() {
             </TabsTrigger>
             <TabsTrigger value='object' className='gap-2'>
               {tabIcons.object}
-              物体库 ({objectStats.total})
+              物品库 ({objectStats.total})
             </TabsTrigger>
-            <TabsTrigger value='creature' className='gap-2'>
-              {tabIcons.creature}
-              生物库 ({creatureStats.total})
+            <TabsTrigger value='scene' className='gap-2'>
+              {tabIcons.scene}
+              场景库 ({sceneStats.total})
             </TabsTrigger>
           </TabsList>
 
-          {(['character', 'object', 'creature'] as SubjectType[]).map(
-            (type) => (
-              <TabsContent key={type} value={type} className='space-y-4'>
-                {/* 添加按钮 */}
-                <div className='flex justify-end'>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() => handleAddSubject(type)}
-                    disabled={!canAddSubject(library[type])}
-                    className='gap-1'
-                  >
-                    <Plus className='h-4 w-4' />
-                    添加{SUBJECT_TYPE_LABELS[type]}
-                  </Button>
-                </div>
+          {(['character', 'object', 'scene'] as SubjectType[]).map((type) => (
+            <TabsContent key={type} value={type} className='space-y-4'>
+              {/* 添加按钮 */}
+              <div className='flex justify-end'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={() => handleAddSubject(type)}
+                  disabled={!canAddSubject(library[type])}
+                  className='gap-1'
+                >
+                  <Plus className='h-4 w-4' />
+                  添加{SUBJECT_TYPE_LABELS[type]}
+                </Button>
+              </div>
 
-                {/* 主体列表 */}
-                {library[type].length === 0 ? (
-                  <div className='text-muted-foreground flex flex-col items-center justify-center py-12'>
-                    <ImageIcon className='mb-2 h-12 w-12' />
-                    <p>暂无{SUBJECT_TYPE_LABELS[type]}</p>
-                    <p className='text-xs'>
-                      点击上方&ldquo;添加&rdquo;按钮创建
-                    </p>
-                  </div>
-                ) : (
-                  <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-                    {library[type].map((subject) => (
-                      <GlobalSubjectCard
-                        key={subject.id}
-                        subject={subject}
-                        canDelete={canDeleteSubject(
-                          library[type],
-                          subject.identifier
-                        )}
-                        onNameChange={handleNameChange}
-                        onImageUpload={handleImageUpload}
-                        onImageRemove={handleImageRemove}
-                        onDelete={handleDeleteSubject}
-                      />
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-            )
-          )}
+              {/* 主体列表 */}
+              {library[type].length === 0 ? (
+                <div className='text-muted-foreground flex flex-col items-center justify-center py-12'>
+                  <ImageIcon className='mb-2 h-12 w-12' />
+                  <p>暂无{SUBJECT_TYPE_LABELS[type]}</p>
+                  <p className='text-xs'>点击上方&ldquo;添加&rdquo;按钮创建</p>
+                </div>
+              ) : (
+                <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+                  {library[type].map((subject) => (
+                    <GlobalSubjectCard
+                      key={subject.id}
+                      subject={subject}
+                      canDelete={canDeleteSubject(
+                        library[type],
+                        subject.identifier
+                      )}
+                      onNameChange={handleNameChange}
+                      onImageUpload={handleImageUpload}
+                      onImageRemove={handleImageRemove}
+                      onDelete={handleDeleteSubject}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          ))}
         </Tabs>
       )}
 

@@ -1,24 +1,24 @@
-// 主体配置 - 支持角色、物体、生物三种类型
+// 主体配置 - 支持角色、物品、场景三种类型
 // 全局主体库：存储主体图片和名称，所有项目共享
-// 项目级映射：每个项目单独配置"角色A/物体B/生物C对应哪个全局主体"
+// 项目级映射：每个项目单独配置"角色A/物品B/场景C对应哪个全局主体"
 
 // ============ 类型定义 ============
 
 // 主体类型
-export type SubjectType = 'character' | 'object' | 'creature';
+export type SubjectType = 'character' | 'object' | 'scene';
 
 // 主体类型中文名称映射
 export const SUBJECT_TYPE_LABELS: Record<SubjectType, string> = {
   character: '角色',
-  object: '物体',
-  creature: '生物'
+  object: '物品',
+  scene: '场景'
 };
 
 // 主体类型图标（用于UI展示）
 export const SUBJECT_TYPE_ICONS: Record<SubjectType, string> = {
   character: '👤',
   object: '📦',
-  creature: '🐾'
+  scene: '🏞️'
 };
 
 // 全局主体定义
@@ -34,11 +34,11 @@ export interface GlobalSubject {
 export interface GlobalSubjectLibrary {
   character: GlobalSubject[];
   object: GlobalSubject[];
-  creature: GlobalSubject[];
+  scene: GlobalSubject[];
 }
 
 // 项目级主体映射
-// key: 完整引用（如 "角色A"、"物体B"）
+// key: 完整引用（如 "角色A"、"物品B"）
 // value: 全局主体ID（如 "character_A"）
 export interface ProjectSubjectMapping {
   [fullRef: string]: string | null;
@@ -62,7 +62,7 @@ const PROJECT_MAPPINGS_KEY_PREFIX = 'youtube_project_subject_mappings_';
 export const DEFAULT_SUBJECT_LIBRARY: GlobalSubjectLibrary = {
   character: [],
   object: [],
-  creature: []
+  scene: []
 };
 
 // ============ IndexedDB 操作 ============
@@ -114,7 +114,7 @@ export async function loadGlobalSubjectLibraryAsync(): Promise<GlobalSubjectLibr
         const library: GlobalSubjectLibrary = {
           character: [],
           object: [],
-          creature: []
+          scene: []
         };
 
         for (const subject of subjects) {
@@ -209,7 +209,7 @@ export async function saveGlobalSubjectLibraryAsync(
     const allSubjects = [
       ...library.character,
       ...library.object,
-      ...library.creature
+      ...library.scene
     ];
 
     for (const subject of allSubjects) {
@@ -242,7 +242,7 @@ export function parseSubjectId(
   const parts = id.split('_');
   if (parts.length !== 2) return null;
   const [type, identifier] = parts;
-  if (!['character', 'object', 'creature'].includes(type)) return null;
+  if (!['character', 'object', 'scene'].includes(type)) return null;
   return { type: type as SubjectType, identifier };
 }
 
@@ -410,7 +410,7 @@ export function saveProjectSubjectMapping(
 // 更新项目级单个映射
 export function updateProjectSubjectMapping(
   mapping: ProjectSubjectMapping,
-  fullRef: string, // 如 "角色A"、"物体B"
+  fullRef: string, // 如 "角色A"、"物品B"
   subjectId: string | null
 ): ProjectSubjectMapping {
   return { ...mapping, [fullRef]: subjectId };
@@ -430,10 +430,10 @@ export function deleteProjectSubjectMapping(projectId: string): void {
 // ============ 提示词解析 ============
 
 // 从提示词中提取所有主体引用
-// 格式: 角色A、角色B、物体A、物体B、生物A、生物B 等
+// 格式: 角色A、角色B、物品A、物品B、场景A、场景B 等
 export function extractSubjectRefs(prompt: string): string[] {
   const refs: string[] = [];
-  const pattern = /(角色|物体|生物)([A-Z])/g;
+  const pattern = /(角色|物品|场景)([A-Z])/g;
   let match;
 
   while ((match = pattern.exec(prompt)) !== null) {
@@ -450,13 +450,13 @@ export function extractSubjectRefs(prompt: string): string[] {
 export function parseFullRef(
   fullRef: string
 ): { type: SubjectType; identifier: string } | null {
-  const match = fullRef.match(/^(角色|物体|生物)([A-Z])$/);
+  const match = fullRef.match(/^(角色|物品|场景)([A-Z])$/);
   if (!match) return null;
 
   const typeMap: Record<string, SubjectType> = {
     角色: 'character',
-    物体: 'object',
-    生物: 'creature'
+    物品: 'object',
+    场景: 'scene'
   };
 
   return {
@@ -562,7 +562,7 @@ export function getSubjectDisplayName(
 export function getSubjectsWithImages(
   library: GlobalSubjectLibrary
 ): GlobalSubject[] {
-  return [...library.character, ...library.object, ...library.creature].filter(
+  return [...library.character, ...library.object, ...library.scene].filter(
     (s) => !!s.imageData
   );
 }

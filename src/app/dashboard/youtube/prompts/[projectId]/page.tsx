@@ -13,7 +13,7 @@ import {
   X,
   Users,
   Package,
-  Bug
+  Image
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -112,7 +112,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
       const hasGlobalSubjects = [
         ...library.character,
         ...library.object,
-        ...library.creature
+        ...library.scene
       ].some((s) => s.imageData);
       const hasMapping = Object.values(mapping).some((v) => v !== null);
       if (hasGlobalSubjects && !hasMapping) {
@@ -257,7 +257,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
   const tabIcons: Record<SubjectType, React.ReactNode> = {
     character: <Users className='h-4 w-4' />,
     object: <Package className='h-4 w-4' />,
-    creature: <Bug className='h-4 w-4' />
+    scene: <Image className='h-4 w-4' />
   };
 
   if (loading) {
@@ -416,15 +416,15 @@ export default function PromptsPage({ params }: PromptsPageProps) {
                   </TabsTrigger>
                   <TabsTrigger value='object' className='gap-1'>
                     {tabIcons.object}
-                    物体 ({subjectLibrary.object.length})
+                    物品 ({subjectLibrary.object.length})
                   </TabsTrigger>
-                  <TabsTrigger value='creature' className='gap-1'>
-                    {tabIcons.creature}
-                    生物 ({subjectLibrary.creature.length})
+                  <TabsTrigger value='scene' className='gap-1'>
+                    {tabIcons.scene}
+                    场景 ({subjectLibrary.scene.length})
                   </TabsTrigger>
                 </TabsList>
 
-                {(['character', 'object', 'creature'] as SubjectType[]).map(
+                {(['character', 'object', 'scene'] as SubjectType[]).map(
                   (type) => {
                     const subjects = subjectLibrary[type];
                     const availableSubjects = getAvailableSubjects(type);
@@ -664,7 +664,7 @@ function StoryboardPromptCard({
       subject: (typeof subjectLibrary.character)[0];
     }[] = [];
 
-    for (const type of ['character', 'object', 'creature'] as SubjectType[]) {
+    for (const type of ['character', 'object', 'scene'] as SubjectType[]) {
       for (const subject of subjectLibrary[type]) {
         if (subject.imageData) {
           const fullRef = generateFullRef(type, subject.identifier);
@@ -714,20 +714,36 @@ function StoryboardPromptCard({
               const subject = getSubjectDisplay(ref);
               const parsed = parseFullRef(ref);
               const icon = parsed ? SUBJECT_TYPE_ICONS[parsed.type] : '❓';
+              // 根据主体类型设置不同的边框色
+              const typeBorderClass = parsed
+                ? {
+                    character: 'border-green-500',
+                    object: 'border-blue-500',
+                    scene: 'border-red-500'
+                  }[parsed.type]
+                : '';
 
               return subject?.imageData ? (
                 <img
                   key={`${refIndex}-${ref}`}
                   src={subject.imageData}
                   alt={`${ref} (第${refIndex + 1}个)`}
-                  className='h-6 w-auto rounded border object-contain'
+                  className={`h-6 w-auto rounded border-2 object-contain ${typeBorderClass}`}
                   title={`${subject.name || ref} (上传顺序: ${refIndex + 1})`}
                 />
               ) : (
                 <Badge
                   key={`${refIndex}-${ref}`}
                   variant='outline'
-                  className='text-[10px]'
+                  className={`text-[10px] ${
+                    parsed
+                      ? {
+                          character: 'border-green-500 text-green-600',
+                          object: 'border-blue-500 text-blue-600',
+                          scene: 'border-red-500 text-red-600'
+                        }[parsed.type]
+                      : ''
+                  }`}
                 >
                   {icon} {ref}
                 </Badge>
@@ -755,11 +771,25 @@ function StoryboardPromptCard({
                 const parsed = parseFullRef(ref);
                 const icon = parsed ? SUBJECT_TYPE_ICONS[parsed.type] : '❓';
                 const isMapped = !!projectMapping[ref];
+                // 根据主体类型设置不同的背景色
+                const typeColorClass = parsed
+                  ? {
+                      character: isMapped
+                        ? 'bg-green-500 text-white hover:bg-green-600'
+                        : 'border-green-500 text-green-600',
+                      object: isMapped
+                        ? 'bg-blue-500 text-white hover:bg-blue-600'
+                        : 'border-blue-500 text-blue-600',
+                      scene: isMapped
+                        ? 'bg-red-500 text-white hover:bg-red-600'
+                        : 'border-red-500 text-red-600'
+                    }[parsed.type]
+                  : '';
                 return (
                   <Badge
                     key={ref}
-                    variant={isMapped ? 'default' : 'outline'}
-                    className='text-[10px]'
+                    variant='outline'
+                    className={`text-[10px] ${typeColorClass}`}
                   >
                     {icon} {ref}
                   </Badge>
@@ -801,12 +831,20 @@ function StoryboardPromptCard({
                   const subject = getSubjectDisplay(ref);
                   const parsed = parseFullRef(ref);
                   const icon = parsed ? SUBJECT_TYPE_ICONS[parsed.type] : '❓';
+                  // 根据主体类型设置不同的背景色
+                  const typeColorClass = parsed
+                    ? {
+                        character: 'bg-green-500 text-white hover:bg-green-600',
+                        object: 'bg-blue-500 text-white hover:bg-blue-600',
+                        scene: 'bg-red-500 text-white hover:bg-red-600'
+                      }[parsed.type]
+                    : '';
 
                   return (
                     <Badge
                       key={ref}
                       variant='secondary'
-                      className='hover:bg-destructive/20 cursor-pointer gap-0.5 px-1.5 py-0.5 text-[10px]'
+                      className={`cursor-pointer gap-0.5 px-1.5 py-0.5 text-[10px] ${typeColorClass}`}
                       onClick={() => {
                         const newRefs = currentRefs.filter((r) => r !== ref);
                         onUpdate(index, 'character_refs', newRefs);
