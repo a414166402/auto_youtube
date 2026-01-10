@@ -658,19 +658,24 @@ function StoryboardPromptCard({
   const currentRefs = storyboard.character_refs || [];
 
   // 获取所有已配置图片的主体（用于手动添加）
+  // 包括：1. 已有映射的主体 2. 提示词中检测到的主体（如果全局库中有对应主体且有图片）
   const getAllConfiguredSubjects = () => {
     const result: {
       fullRef: string;
       subject: (typeof subjectLibrary.character)[0];
     }[] = [];
+    const addedRefs = new Set<string>();
 
     for (const type of ['character', 'object', 'scene'] as SubjectType[]) {
       for (const subject of subjectLibrary[type]) {
         if (subject.imageData) {
           const fullRef = generateFullRef(type, subject.identifier);
-          // 检查是否有映射
-          if (projectMapping[fullRef]) {
-            result.push({ fullRef, subject });
+          // 检查是否有映射，或者是否在提示词中被检测到
+          if (projectMapping[fullRef] || allRefs.includes(fullRef)) {
+            if (!addedRefs.has(fullRef)) {
+              result.push({ fullRef, subject });
+              addedRefs.add(fullRef);
+            }
           }
         }
       }
@@ -687,9 +692,22 @@ function StoryboardPromptCard({
   );
 
   // 获取主体的显示信息
+  // 优先从映射中获取，如果没有映射则直接从全局库中根据fullRef查找
   const getSubjectDisplay = (fullRef: string) => {
-    const subject = getSubjectForRef(fullRef, projectMapping, subjectLibrary);
-    return subject;
+    // 先尝试从映射中获取
+    const mappedSubject = getSubjectForRef(
+      fullRef,
+      projectMapping,
+      subjectLibrary
+    );
+    if (mappedSubject) return mappedSubject;
+
+    // 如果没有映射，直接从全局库中查找
+    const parsed = parseFullRef(fullRef);
+    if (!parsed) return null;
+
+    const subjects = subjectLibrary[parsed.type];
+    return subjects.find((s) => s.identifier === parsed.identifier) || null;
   };
 
   return (
