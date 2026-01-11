@@ -177,6 +177,35 @@
       "confirm": "Confirm",
       "loading": "Loading...",
       "no_data": "No data"
+    },
+    "version": {
+      "current": "Current Version",
+      "switch": "Switch Version",
+      "continue": "Continue Conversation",
+      "regenerate": "Regenerate",
+      "history": "Version History"
+    },
+    "storyboardManage": {
+      "add": "Add Storyboard",
+      "delete": "Delete Storyboard",
+      "swap": "Swap Position",
+      "insertBefore": "Insert Before",
+      "insertAfter": "Insert After",
+      "confirmDelete": "Are you sure you want to delete storyboard #{index}?",
+      "deleteWarning": "Subsequent storyboards will be renumbered"
+    },
+    "project": {
+      "copy": "Copy Project",
+      "copySuccess": "Project copied successfully",
+      "newName": "New Project Name"
+    },
+    "aspectRatio": {
+      "label": "Aspect Ratio",
+      "portrait": "Portrait 9:16",
+      "landscape": "Landscape 16:9"
+    },
+    "subject": {
+      "uploadLimit": "Image size cannot exceed 5MB"
     }
   }
 }

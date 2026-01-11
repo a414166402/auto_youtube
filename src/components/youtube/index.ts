@@ -60,3 +60,14 @@ export {
   DeleteConfirmDialog,
   useConfirmDialog
 } from './confirm-dialog';
+
+// V2 新增组件
+export { VersionSelector } from './version-selector';
+export { ContinueDialog } from './continue-dialog';
+export { RegenerateDialog } from './regenerate-dialog';
+export { DeleteStoryboardDialog } from './delete-storyboard-dialog';
+export { AddStoryboardDialog } from './add-storyboard-dialog';
+export { SwapStoryboardDialog } from './swap-storyboard-dialog';
+export { CopyProjectDialog } from './copy-project-dialog';
+export { AspectRatioSelector } from './aspect-ratio-selector';
+export { AddSubjectDialog } from './add-subject-dialog';

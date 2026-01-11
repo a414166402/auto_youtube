@@ -1,6 +1,15 @@
 # Project Structure
 
 ```
+api/                        # Python backend (FastAPI)
+│   ├── youtube.py         # YouTube API endpoints
+│   └── youtube_models.py  # Pydantic models
+│
+docs/                       # Documentation
+│   ├── requirements-v2-backend.md
+│   ├── requirements-v2-frontend.md
+│   └── youtube-api-spec.md
+│
 src/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API routes (proxy to backend services)

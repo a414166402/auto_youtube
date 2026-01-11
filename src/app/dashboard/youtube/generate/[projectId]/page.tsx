@@ -45,7 +45,8 @@ import {
   updateProject,
   generateImage,
   generateVideo,
-  cleanupMedia
+  cleanupMedia,
+  updateProjectAspectRatio
 } from '@/lib/api/youtube';
 import {
   loadGlobalSubjectLibraryAsync,
@@ -58,10 +59,12 @@ import {
   DEFAULT_SUBJECT_LIBRARY
 } from '@/lib/subject-config';
 import { VideoPlayer } from '@/components/youtube/video-player';
+import { AspectRatioSelector } from '@/components/youtube/aspect-ratio-selector';
 import type {
   ProjectResponse,
   GeneratedImage,
-  GeneratedVideo
+  GeneratedVideo,
+  AspectRatio
 } from '@/types/youtube';
 
 interface GeneratePageProps {
@@ -88,6 +91,10 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   const [projectMapping, setProjectMapping] = useState<ProjectSubjectMapping>(
     {}
   );
+
+  // 图片比例状态
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
+  const [savingAspectRatio, setSavingAspectRatio] = useState(false);
 
   // 生成状态 - 使用 Set 支持多个并发生成
   const [generatingImageIndices, setGeneratingImageIndices] = useState<
@@ -147,6 +154,9 @@ export default function GeneratePage({ params }: GeneratePageProps) {
       const projectData = await getProject(projectId);
       setProject(projectData);
 
+      // 设置图片比例
+      setAspectRatio(projectData.data.aspect_ratio || '9:16');
+
       // 加载全局主体库和项目映射
       const library = await loadGlobalSubjectLibraryAsync();
       setSubjectLibrary(library);
@@ -165,10 +175,27 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     loadData();
   }, [loadData]);
 
-  // 辅助函数：获取主体引用对应的图片
-  const getSubjectImage = (ref: string): string | undefined => {
-    const subject = getSubjectForRef(ref, projectMapping, subjectLibrary);
-    return subject?.imageData;
+  // 更新图片比例
+  const handleAspectRatioChange = async (newRatio: AspectRatio) => {
+    if (!project || newRatio === aspectRatio) return;
+
+    setSavingAspectRatio(true);
+    try {
+      await updateProjectAspectRatio(projectId, newRatio);
+      setAspectRatio(newRatio);
+      toast({
+        title: '已更新',
+        description: `图片比例已设置为 ${newRatio === '9:16' ? '竖屏 9:16' : '横屏 16:9'}`
+      });
+    } catch (err) {
+      toast({
+        title: '更新失败',
+        description: err instanceof Error ? err.message : '更新图片比例失败',
+        variant: 'destructive'
+      });
+    } finally {
+      setSavingAspectRatio(false);
+    }
   };
 
   // 生成单个分镜图片
@@ -200,7 +227,8 @@ export default function GeneratePage({ params }: GeneratePageProps) {
       const result = await generateImage(projectId, {
         storyboard_index: storyboardIndex,
         character_images:
-          characterImages.length > 0 ? characterImages : undefined
+          characterImages.length > 0 ? characterImages : undefined,
+        aspect_ratio: aspectRatio
       });
 
       if (result.success) {
@@ -907,18 +935,27 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   return (
     <div className='container mx-auto space-y-6'>
       {/* Header */}
-      <div className='flex items-center gap-4'>
-        <Button
-          variant='ghost'
-          size='icon'
-          onClick={() => router.push(`/dashboard/youtube/project/${projectId}`)}
-        >
-          <ArrowLeft className='h-4 w-4' />
-        </Button>
-        <div>
-          <h1 className='text-2xl font-bold'>素材生成</h1>
-          <p className='text-muted-foreground text-sm'>{project.data.name}</p>
+      <div className='flex items-center justify-between'>
+        <div className='flex items-center gap-4'>
+          <Button
+            variant='ghost'
+            size='icon'
+            onClick={() =>
+              router.push(`/dashboard/youtube/project/${projectId}`)
+            }
+          >
+            <ArrowLeft className='h-4 w-4' />
+          </Button>
+          <div>
+            <h1 className='text-2xl font-bold'>素材生成</h1>
+            <p className='text-muted-foreground text-sm'>{project.data.name}</p>
+          </div>
         </div>
+        <AspectRatioSelector
+          value={aspectRatio}
+          onChange={handleAspectRatioChange}
+          disabled={savingAspectRatio || generatingImageIndices.size > 0}
+        />
       </div>
 
       {/* Tabs */}

@@ -7,13 +7,17 @@ import {
   Loader2,
   ChevronRight,
   Download,
-  RefreshCw,
   Save,
   Settings,
   X,
   Users,
   Package,
-  Image
+  Image,
+  MessageSquarePlus,
+  RefreshCw,
+  Plus,
+  Minus,
+  ArrowLeftRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,25 +45,43 @@ import {
   updateProject,
   generatePrompts,
   exportPrompts,
-  downloadJson
+  downloadJson,
+  getPromptHistory,
+  continuePrompts,
+  regeneratePromptsFromVersion,
+  switchPromptVersion,
+  deleteStoryboardByIndex,
+  addStoryboard,
+  swapStoryboards,
+  getSubjects
 } from '@/lib/api/youtube';
 import {
-  loadGlobalSubjectLibraryAsync,
-  loadProjectSubjectMapping,
-  saveProjectSubjectMapping,
-  updateProjectSubjectMapping,
+  subjectsToLibrary,
   getSubjectForRef,
   extractSubjectRefs,
   parseFullRef,
   generateFullRef,
   type GlobalSubjectLibrary,
   type ProjectSubjectMapping,
-  type SubjectType,
   SUBJECT_TYPE_LABELS,
   SUBJECT_TYPE_ICONS,
   DEFAULT_SUBJECT_LIBRARY
 } from '@/lib/subject-config';
-import type { ProjectResponse, Storyboard } from '@/types/youtube';
+import {
+  VersionSelector,
+  ContinueDialog,
+  RegenerateDialog,
+  DeleteStoryboardDialog,
+  AddStoryboardDialog,
+  SwapStoryboardDialog
+} from '@/components/youtube';
+import type {
+  ProjectResponse,
+  Storyboard,
+  PromptHistorySummary,
+  SubjectType,
+  InsertType
+} from '@/types/youtube';
 
 interface PromptsPageProps {
   params: Promise<{
@@ -92,6 +114,22 @@ export default function PromptsPage({ params }: PromptsPageProps) {
   const [editedStoryboards, setEditedStoryboards] = useState<Storyboard[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
 
+  // V2: 版本管理状态
+  const [currentVersion, setCurrentVersion] = useState<string>('v1');
+  const [versions, setVersions] = useState<PromptHistorySummary[]>([]);
+  const [isLatestVersion, setIsLatestVersion] = useState(true);
+
+  // V2: 弹窗状态
+  const [continueDialogOpen, setContinueDialogOpen] = useState(false);
+  const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [swapDialogOpen, setSwapDialogOpen] = useState(false);
+  const [selectedStoryboard, setSelectedStoryboard] =
+    useState<Storyboard | null>(null);
+  const [selectedStoryboardIndex, setSelectedStoryboardIndex] =
+    useState<number>(0);
+
   // 加载数据
   const loadData = useCallback(async () => {
     try {
@@ -100,23 +138,52 @@ export default function PromptsPage({ params }: PromptsPageProps) {
       setProject(projectData);
       setEditedStoryboards(projectData.data.storyboards);
 
-      // 加载全局主体库
-      const library = await loadGlobalSubjectLibraryAsync();
-      setSubjectLibrary(library);
+      // 设置当前版本
+      const version = projectData.data.current_prompt_version || 'v1';
+      setCurrentVersion(version);
 
-      // 加载项目级主体映射
-      const mapping = loadProjectSubjectMapping(projectId);
-      setProjectMapping(mapping);
+      // 加载主体映射
+      setProjectMapping(projectData.data.subject_mappings || {});
 
-      // 如果有全局主体但没有配置映射，自动展开映射配置区域
-      const hasGlobalSubjects = [
-        ...library.character,
-        ...library.object,
-        ...library.scene
-      ].some((s) => s.imageData);
-      const hasMapping = Object.values(mapping).some((v) => v !== null);
-      if (hasGlobalSubjects && !hasMapping) {
-        setIsMappingOpen(true);
+      // 加载全局主体库（从服务端）
+      try {
+        const subjectsResponse = await getSubjects();
+        const library = subjectsToLibrary(subjectsResponse.subjects);
+        setSubjectLibrary(library);
+
+        // 如果有全局主体但没有配置映射，自动展开映射配置区域
+        const hasGlobalSubjects = [
+          ...library.character,
+          ...library.object,
+          ...library.scene
+        ].some((s) => s.imageData);
+        const hasMapping = Object.values(
+          projectData.data.subject_mappings || {}
+        ).some((v) => v !== null);
+        if (hasGlobalSubjects && !hasMapping) {
+          setIsMappingOpen(true);
+        }
+      } catch {
+        // 如果获取主体失败，使用默认空库
+        console.warn('Failed to load subjects from server');
+      }
+
+      // 加载版本历史
+      try {
+        const historyResponse = await getPromptHistory(projectId);
+        setVersions(historyResponse.versions);
+        // 判断是否是最新版本
+        if (historyResponse.versions.length > 0) {
+          const latestVersion = historyResponse.versions.reduce((a, b) => {
+            const numA = parseInt(a.version.replace('v', ''), 10);
+            const numB = parseInt(b.version.replace('v', ''), 10);
+            return numA > numB ? a : b;
+          });
+          setIsLatestVersion(version === latestVersion.version);
+        }
+      } catch {
+        // 如果没有历史版本，使用空数组
+        setVersions([]);
       }
 
       setError(null);
@@ -149,15 +216,35 @@ export default function PromptsPage({ params }: PromptsPageProps) {
     setHasChanges(true);
   };
 
-  // 更新项目级主体映射
-  const handleMappingChange = (fullRef: string, subjectId: string | null) => {
-    const newMapping = updateProjectSubjectMapping(
-      projectMapping,
-      fullRef,
-      subjectId
-    );
+  // 更新项目级主体映射（保存到服务端）
+  const handleMappingChange = async (
+    fullRef: string,
+    subjectId: string | null
+  ) => {
+    const newMapping = { ...projectMapping };
+    if (subjectId) {
+      newMapping[fullRef] = subjectId;
+    } else {
+      delete newMapping[fullRef];
+    }
     setProjectMapping(newMapping);
-    saveProjectSubjectMapping(projectId, newMapping);
+
+    // 保存到服务端 - 过滤掉 null 值
+    try {
+      const cleanMapping: Record<string, string> = {};
+      for (const [key, value] of Object.entries(newMapping)) {
+        if (value) {
+          cleanMapping[key] = value;
+        }
+      }
+      await updateProject(projectId, { subject_mappings: cleanMapping });
+    } catch (err) {
+      toast({
+        title: '保存映射失败',
+        description: err instanceof Error ? err.message : '保存主体映射失败',
+        variant: 'destructive'
+      });
+    }
   };
 
   // 获取特定类型有图片的主体
@@ -165,9 +252,49 @@ export default function PromptsPage({ params }: PromptsPageProps) {
     return subjectLibrary[type].filter((s) => s.imageData);
   };
 
+  // 从所有分镜提示词中提取主体引用，按类型分组
+  const getExtractedRefsByType = () => {
+    const allRefs = new Set<string>();
+    for (const sb of editedStoryboards) {
+      const refs = extractSubjectRefs(sb.text_to_image || '');
+      refs.forEach((ref) => allRefs.add(ref));
+    }
+
+    const grouped: Record<SubjectType, string[]> = {
+      character: [],
+      object: [],
+      scene: []
+    };
+
+    for (const ref of allRefs) {
+      const parsed = parseFullRef(ref);
+      if (parsed) {
+        grouped[parsed.type].push(ref);
+      }
+    }
+
+    // 排序：按标识符字母顺序
+    for (const type of Object.keys(grouped) as SubjectType[]) {
+      grouped[type].sort();
+    }
+
+    return grouped;
+  };
+
+  const extractedRefsByType = getExtractedRefsByType();
+
   // 获取所有已配置的主体数量
   const getConfiguredCount = () => {
     return Object.values(projectMapping).filter((v) => v !== null).length;
+  };
+
+  // 获取提取到的引用总数
+  const getTotalExtractedRefs = () => {
+    return (
+      extractedRefsByType.character.length +
+      extractedRefsByType.object.length +
+      extractedRefsByType.scene.length
+    );
   };
 
   // 保存所有修改
@@ -197,8 +324,8 @@ export default function PromptsPage({ params }: PromptsPageProps) {
     }
   };
 
-  // 重新生成提示词
-  const handleRegenerate = async () => {
+  // 首次生成提示词
+  const handleFirstGenerate = async () => {
     setIsGenerating(true);
     try {
       const result = await generatePrompts(projectId, { instruction });
@@ -223,6 +350,173 @@ export default function PromptsPage({ params }: PromptsPageProps) {
       });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // V2: 版本切换
+  const handleVersionChange = async (version: string) => {
+    try {
+      const result = await switchPromptVersion(projectId, { version });
+      if (result.success) {
+        toast({
+          title: '版本切换成功',
+          description: `已切换到 ${version}`
+        });
+        loadData();
+      }
+    } catch (err) {
+      toast({
+        title: '切换失败',
+        description: err instanceof Error ? err.message : '切换版本失败',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // V2: 继续对话
+  const handleContinue = async (newInstruction: string) => {
+    try {
+      const result = await continuePrompts(projectId, {
+        instruction: newInstruction
+      });
+      if (result.success) {
+        toast({
+          title: '生成成功',
+          description: `已生成新版本 ${result.version}，共 ${result.storyboard_count} 个分镜`
+        });
+        loadData();
+      } else {
+        toast({
+          title: '生成失败',
+          description: result.error || '继续对话失败',
+          variant: 'destructive'
+        });
+      }
+    } catch (err) {
+      toast({
+        title: '生成失败',
+        description: err instanceof Error ? err.message : '继续对话失败',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // V2: 重新生成
+  const handleRegenerate = async (
+    fromVersion: string,
+    newInstruction: string
+  ) => {
+    try {
+      const result = await regeneratePromptsFromVersion(projectId, {
+        from_version: fromVersion,
+        instruction: newInstruction
+      });
+      if (result.success) {
+        toast({
+          title: '重新生成成功',
+          description: `已生成新版本 ${result.version}，删除了 ${result.deleted_versions.length} 个旧版本`
+        });
+        loadData();
+      } else {
+        toast({
+          title: '重新生成失败',
+          description: result.error || '重新生成失败',
+          variant: 'destructive'
+        });
+      }
+    } catch (err) {
+      toast({
+        title: '重新生成失败',
+        description: err instanceof Error ? err.message : '重新生成失败',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // V2: 删除分镜
+  const handleDeleteStoryboard = async (index: number) => {
+    try {
+      const result = await deleteStoryboardByIndex(projectId, index);
+      if (result.success) {
+        toast({
+          title: '删除成功',
+          description: `分镜 #${index + 1} 已删除，剩余 ${result.new_storyboard_count} 个分镜`
+        });
+        loadData();
+      } else {
+        toast({
+          title: '删除失败',
+          description: result.error || '删除分镜失败',
+          variant: 'destructive'
+        });
+      }
+    } catch (err) {
+      toast({
+        title: '删除失败',
+        description: err instanceof Error ? err.message : '删除分镜失败',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // V2: 新增分镜
+  const handleAddStoryboard = async (
+    position: number,
+    insertType: InsertType
+  ) => {
+    try {
+      const result = await addStoryboard(projectId, {
+        position,
+        insert_type: insertType
+      });
+      if (result.success) {
+        toast({
+          title: '新增成功',
+          description: `新分镜已插入到 #${result.new_index + 1} 位置`
+        });
+        loadData();
+      } else {
+        toast({
+          title: '新增失败',
+          description: result.error || '新增分镜失败',
+          variant: 'destructive'
+        });
+      }
+    } catch (err) {
+      toast({
+        title: '新增失败',
+        description: err instanceof Error ? err.message : '新增分镜失败',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // V2: 交换分镜
+  const handleSwapStoryboards = async (indexA: number, indexB: number) => {
+    try {
+      const result = await swapStoryboards(projectId, {
+        index_a: indexA,
+        index_b: indexB
+      });
+      if (result.success) {
+        toast({
+          title: '交换成功',
+          description: `分镜 #${indexA + 1} 与 #${indexB + 1} 已交换位置`
+        });
+        loadData();
+      } else {
+        toast({
+          title: '交换失败',
+          description: result.error || '交换分镜失败',
+          variant: 'destructive'
+        });
+      }
+    } catch (err) {
+      toast({
+        title: '交换失败',
+        description: err instanceof Error ? err.message : '交换分镜失败',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -251,6 +545,24 @@ export default function PromptsPage({ params }: PromptsPageProps) {
   // 导航到下一步 - 图片生成
   const handleNextStep = () => {
     router.push(`/dashboard/youtube/generate/${projectId}`);
+  };
+
+  // 打开删除弹窗
+  const openDeleteDialog = (storyboard: Storyboard) => {
+    setSelectedStoryboard(storyboard);
+    setDeleteDialogOpen(true);
+  };
+
+  // 打开新增弹窗
+  const openAddDialog = (index: number) => {
+    setSelectedStoryboardIndex(index);
+    setAddDialogOpen(true);
+  };
+
+  // 打开交换弹窗
+  const openSwapDialog = (index: number) => {
+    setSelectedStoryboardIndex(index);
+    setSwapDialogOpen(true);
   };
 
   // Tab图标映射
@@ -311,37 +623,38 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         </div>
 
         <div className='flex items-center gap-3'>
-          {/* 生成指令输入 */}
-          <div className='flex items-center gap-2'>
-            <Label
-              htmlFor='instruction-header'
-              className='text-sm whitespace-nowrap'
-            >
-              生成指令:
-            </Label>
-            <Input
-              id='instruction-header'
-              value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
-              placeholder='不需要任何改编'
-              className='w-48'
+          {/* V2: 版本选择器 */}
+          {versions.length > 0 && (
+            <VersionSelector
+              currentVersion={currentVersion}
+              versions={versions}
+              onVersionChange={handleVersionChange}
             />
-          </div>
+          )}
 
-          {/* 重新生成按钮 */}
-          <Button
-            variant='outline'
-            onClick={handleRegenerate}
-            disabled={isGenerating}
-            className='gap-1'
-          >
-            {isGenerating ? (
-              <Loader2 className='h-4 w-4 animate-spin' />
-            ) : (
+          {/* V2: 继续对话按钮 */}
+          {storyboards.length > 0 && (
+            <Button
+              variant='outline'
+              onClick={() => setContinueDialogOpen(true)}
+              className='gap-1'
+            >
+              <MessageSquarePlus className='h-4 w-4' />
+              继续对话
+            </Button>
+          )}
+
+          {/* V2: 重新生成按钮（仅在查看历史版本时显示） */}
+          {storyboards.length > 0 && !isLatestVersion && (
+            <Button
+              variant='outline'
+              onClick={() => setRegenerateDialogOpen(true)}
+              className='gap-1'
+            >
               <RefreshCw className='h-4 w-4' />
-            )}
-            重新生成
-          </Button>
+              重新生成
+            </Button>
+          )}
 
           {/* 保存按钮 */}
           {hasChanges && (
@@ -394,7 +707,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
                 </CardTitle>
                 <div className='flex items-center gap-2'>
                   <Badge variant='secondary'>
-                    {getConfiguredCount()} 个已配置
+                    {getConfiguredCount()}/{getTotalExtractedRefs()} 已映射
                   </Badge>
                   <ChevronRight
                     className={`h-4 w-4 transition-transform ${isMappingOpen ? 'rotate-90' : ''}`}
@@ -412,37 +725,31 @@ export default function PromptsPage({ params }: PromptsPageProps) {
                 <TabsList className='mb-4'>
                   <TabsTrigger value='character' className='gap-1'>
                     {tabIcons.character}
-                    角色 ({subjectLibrary.character.length})
+                    角色 ({extractedRefsByType.character.length})
                   </TabsTrigger>
                   <TabsTrigger value='object' className='gap-1'>
                     {tabIcons.object}
-                    物品 ({subjectLibrary.object.length})
+                    物品 ({extractedRefsByType.object.length})
                   </TabsTrigger>
                   <TabsTrigger value='scene' className='gap-1'>
                     {tabIcons.scene}
-                    场景 ({subjectLibrary.scene.length})
+                    场景 ({extractedRefsByType.scene.length})
                   </TabsTrigger>
                 </TabsList>
 
                 {(['character', 'object', 'scene'] as SubjectType[]).map(
                   (type) => {
-                    const subjects = subjectLibrary[type];
+                    const extractedRefs = extractedRefsByType[type];
                     const availableSubjects = getAvailableSubjects(type);
                     const typeLabel = SUBJECT_TYPE_LABELS[type];
 
                     return (
                       <TabsContent key={type} value={type}>
-                        {subjects.length === 0 ? (
+                        {extractedRefs.length === 0 ? (
                           <Alert>
                             <AlertDescription>
-                              暂无{typeLabel}，请先在{' '}
-                              <a
-                                href='/dashboard/youtube/settings'
-                                className='text-blue-500 hover:underline'
-                              >
-                                Settings 页面
-                              </a>{' '}
-                              添加{typeLabel}
+                              提示词中未检测到{typeLabel}引用（如{typeLabel}A、
+                              {typeLabel}B等）
                             </AlertDescription>
                           </Alert>
                         ) : availableSubjects.length === 0 ? (
@@ -461,24 +768,22 @@ export default function PromptsPage({ params }: PromptsPageProps) {
                         ) : (
                           <div className='space-y-3'>
                             <p className='text-muted-foreground text-sm'>
-                              配置提示词中的{typeLabel}A/B/C对应哪个全局
+                              配置提示词中检测到的{typeLabel}引用对应哪个全局
                               {typeLabel}，用于图片生成时的引用
                             </p>
                             <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-                              {subjects.map((subject) => {
-                                const fullRef = generateFullRef(
-                                  type,
-                                  subject.identifier
-                                );
+                              {extractedRefs.map((fullRef) => {
+                                const parsed = parseFullRef(fullRef);
+                                const identifier = parsed?.identifier || '?';
                                 const currentMapping = projectMapping[fullRef];
 
                                 return (
                                   <div
-                                    key={subject.id}
+                                    key={fullRef}
                                     className='flex items-center gap-3 rounded-lg border p-2'
                                   >
                                     <div className='bg-primary text-primary-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold'>
-                                      {subject.identifier}
+                                      {identifier}
                                     </div>
                                     <Select
                                       value={currentMapping || 'none'}
@@ -501,13 +806,14 @@ export default function PromptsPage({ params }: PromptsPageProps) {
                                         {availableSubjects.map((s) => (
                                           <SelectItem key={s.id} value={s.id}>
                                             <div className='flex items-center gap-2'>
-                                              <img
-                                                src={s.imageData}
-                                                alt={`${typeLabel} ${s.identifier}`}
-                                                className='h-5 w-5 rounded object-cover'
-                                              />
-                                              {typeLabel} {s.identifier}
-                                              {s.name && ` - ${s.name}`}
+                                              {s.imageData && (
+                                                <img
+                                                  src={s.imageData}
+                                                  alt={s.name || '主体图片'}
+                                                  className='h-5 w-5 rounded object-cover'
+                                                />
+                                              )}
+                                              {s.name || '未命名'}
                                             </div>
                                           </SelectItem>
                                         ))}
@@ -565,7 +871,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
             </p>
           </div>
 
-          <Button onClick={handleRegenerate} disabled={isGenerating}>
+          <Button onClick={handleFirstGenerate} disabled={isGenerating}>
             {isGenerating ? (
               <Loader2 className='mr-2 h-4 w-4 animate-spin' />
             ) : null}
@@ -579,9 +885,13 @@ export default function PromptsPage({ params }: PromptsPageProps) {
               key={index}
               storyboard={storyboard}
               index={index}
+              totalCount={storyboards.length}
               subjectLibrary={subjectLibrary}
               projectMapping={projectMapping}
               onUpdate={handleUpdateStoryboard}
+              onDelete={() => openDeleteDialog(storyboard)}
+              onAdd={() => openAddDialog(index)}
+              onSwap={() => openSwapDialog(index)}
             />
           ))}
         </div>
@@ -629,6 +939,44 @@ export default function PromptsPage({ params }: PromptsPageProps) {
           </Button>
         </div>
       )}
+
+      {/* V2: 弹窗组件 */}
+      <ContinueDialog
+        open={continueDialogOpen}
+        onOpenChange={setContinueDialogOpen}
+        currentVersion={currentVersion}
+        onConfirm={handleContinue}
+      />
+
+      <RegenerateDialog
+        open={regenerateDialogOpen}
+        onOpenChange={setRegenerateDialogOpen}
+        fromVersion={currentVersion}
+        allVersions={versions}
+        onConfirm={handleRegenerate}
+      />
+
+      <DeleteStoryboardDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        storyboard={selectedStoryboard}
+        onConfirm={handleDeleteStoryboard}
+      />
+
+      <AddStoryboardDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        referenceIndex={selectedStoryboardIndex}
+        onConfirm={handleAddStoryboard}
+      />
+
+      <SwapStoryboardDialog
+        open={swapDialogOpen}
+        onOpenChange={setSwapDialogOpen}
+        currentIndex={selectedStoryboardIndex}
+        totalCount={storyboards.length}
+        onConfirm={handleSwapStoryboards}
+      />
     </div>
   );
 }
@@ -637,6 +985,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
 interface StoryboardPromptCardProps {
   storyboard: Storyboard;
   index: number;
+  totalCount: number;
   subjectLibrary: GlobalSubjectLibrary;
   projectMapping: ProjectSubjectMapping;
   onUpdate: (
@@ -644,40 +993,47 @@ interface StoryboardPromptCardProps {
     field: keyof Storyboard,
     value: string | string[]
   ) => void;
+  onDelete: () => void;
+  onAdd: () => void;
+  onSwap: () => void;
 }
 
 function StoryboardPromptCard({
   storyboard,
   index,
+  totalCount,
   subjectLibrary,
   projectMapping,
-  onUpdate
+  onUpdate,
+  onDelete,
+  onAdd,
+  onSwap
 }: StoryboardPromptCardProps) {
   // 从提示词中提取所有主体引用
   const allRefs = extractSubjectRefs(storyboard.text_to_image || '');
   const currentRefs = storyboard.character_refs || [];
 
   // 获取所有已配置图片的主体（用于手动添加）
-  // 包括：1. 已有映射的主体 2. 提示词中检测到的主体（如果全局库中有对应主体且有图片）
+  // 只返回在提示词中检测到且已映射的主体
   const getAllConfiguredSubjects = () => {
     const result: {
       fullRef: string;
       subject: (typeof subjectLibrary.character)[0];
     }[] = [];
-    const addedRefs = new Set<string>();
 
-    for (const type of ['character', 'object', 'scene'] as SubjectType[]) {
-      for (const subject of subjectLibrary[type]) {
-        if (subject.imageData) {
-          const fullRef = generateFullRef(type, subject.identifier);
-          // 检查是否有映射，或者是否在提示词中被检测到
-          if (projectMapping[fullRef] || allRefs.includes(fullRef)) {
-            if (!addedRefs.has(fullRef)) {
-              result.push({ fullRef, subject });
-              addedRefs.add(fullRef);
-            }
-          }
-        }
+    // 遍历所有已映射的引用
+    for (const [fullRef, subjectId] of Object.entries(projectMapping)) {
+      if (!subjectId) continue;
+
+      // 查找对应的主体
+      const parsed = parseFullRef(fullRef);
+      if (!parsed) continue;
+
+      const subject = subjectLibrary[parsed.type].find(
+        (s) => s.id === subjectId && s.imageData
+      );
+      if (subject) {
+        result.push({ fullRef, subject });
       }
     }
 
@@ -692,9 +1048,7 @@ function StoryboardPromptCard({
   );
 
   // 获取主体的显示信息
-  // 优先从映射中获取，如果没有映射则直接从全局库中根据fullRef查找
   const getSubjectDisplay = (fullRef: string) => {
-    // 先尝试从映射中获取
     const mappedSubject = getSubjectForRef(
       fullRef,
       projectMapping,
@@ -702,7 +1056,6 @@ function StoryboardPromptCard({
     );
     if (mappedSubject) return mappedSubject;
 
-    // 如果没有映射，直接从全局库中查找
     const parsed = parseFullRef(fullRef);
     if (!parsed) return null;
 
@@ -717,12 +1070,42 @@ function StoryboardPromptCard({
           <CardTitle className='text-sm'>
             分镜 #{storyboard.index + 1}
           </CardTitle>
+          {/* V2: 分镜操作按钮 */}
           <div className='flex items-center gap-1'>
             {storyboard.is_prompt_edited && (
-              <Badge variant='secondary' className='text-[10px]'>
+              <Badge variant='secondary' className='mr-1 text-[10px]'>
                 已编辑
               </Badge>
             )}
+            <Button
+              variant='ghost'
+              size='icon'
+              className='h-6 w-6 text-blue-500 hover:text-blue-600'
+              onClick={onSwap}
+              disabled={totalCount < 2}
+              title='交换位置'
+            >
+              <ArrowLeftRight className='h-3.5 w-3.5' />
+            </Button>
+            <Button
+              variant='ghost'
+              size='icon'
+              className='h-6 w-6 text-green-500 hover:text-green-600'
+              onClick={onAdd}
+              title='新增分镜'
+            >
+              <Plus className='h-3.5 w-3.5' />
+            </Button>
+            <Button
+              variant='ghost'
+              size='icon'
+              className='h-6 w-6 text-red-500 hover:text-red-600'
+              onClick={onDelete}
+              disabled={totalCount <= 1}
+              title='删除分镜'
+            >
+              <Minus className='h-3.5 w-3.5' />
+            </Button>
           </div>
         </div>
         {/* 主体引用展示 */}
@@ -732,7 +1115,6 @@ function StoryboardPromptCard({
               const subject = getSubjectDisplay(ref);
               const parsed = parseFullRef(ref);
               const icon = parsed ? SUBJECT_TYPE_ICONS[parsed.type] : '❓';
-              // 根据主体类型设置不同的边框色
               const typeBorderClass = parsed
                 ? {
                     character: 'border-green-500',
@@ -789,7 +1171,6 @@ function StoryboardPromptCard({
                 const parsed = parseFullRef(ref);
                 const icon = parsed ? SUBJECT_TYPE_ICONS[parsed.type] : '❓';
                 const isMapped = !!projectMapping[ref];
-                // 根据主体类型设置不同的背景色
                 const typeColorClass = parsed
                   ? {
                       character: isMapped
@@ -849,7 +1230,6 @@ function StoryboardPromptCard({
                   const subject = getSubjectDisplay(ref);
                   const parsed = parseFullRef(ref);
                   const icon = parsed ? SUBJECT_TYPE_ICONS[parsed.type] : '❓';
-                  // 根据主体类型设置不同的背景色
                   const typeColorClass = parsed
                     ? {
                         character: 'bg-green-500 text-white hover:bg-green-600',

@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/pagination';
 import { ProjectCard } from '@/components/youtube/project-card';
 import { CreateProjectDialog } from '@/components/youtube/create-project-dialog';
-import { getProjects, deleteProject } from '@/lib/api/youtube';
+import { getProjects, deleteProject, copyProject } from '@/lib/api/youtube';
 import type { ProjectListItem } from '@/types/youtube';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -123,6 +123,25 @@ export default function ProjectsPage() {
     }
   };
 
+  const handleCopy = async (id: string, newName: string) => {
+    try {
+      await copyProject(id, { name: newName });
+      toast({
+        title: '复制成功',
+        description: '项目已成功复制'
+      });
+      fetchProjects();
+    } catch (error) {
+      console.error('Failed to copy project:', error);
+      toast({
+        title: '复制失败',
+        description: error instanceof Error ? error.message : '请稍后重试',
+        variant: 'destructive'
+      });
+      throw error;
+    }
+  };
+
   const handleProjectCreated = () => {
     toast({
       title: '创建成功',
@@ -191,6 +210,7 @@ export default function ProjectsPage() {
                 key={project.id}
                 project={project}
                 onDelete={handleDelete}
+                onCopy={handleCopy}
               />
             ))}
           </div>

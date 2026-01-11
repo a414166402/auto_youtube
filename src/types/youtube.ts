@@ -16,6 +16,15 @@ export type ProjectStatus =
 // 图片生成类型（与后端GenerationType对齐）
 export type GenerationType = 'text_to_image' | 'image_text_to_image';
 
+// 主体类型（V2新增）
+export type SubjectType = 'character' | 'object' | 'scene';
+
+// 图片比例（V2新增）
+export type AspectRatio = '9:16' | '16:9';
+
+// 分镜插入类型（V2新增）
+export type InsertType = 'before' | 'after';
+
 // ============ JSONB嵌套数据结构（与后端对齐）============
 
 // 生成的图片
@@ -50,6 +59,10 @@ export interface ProjectData {
   youtube_url: string;
   status: ProjectStatus;
   prompt_version?: string | null;
+  aspect_ratio?: AspectRatio; // V2新增：图片生成比例
+  current_prompt_version?: string; // V2新增：当前提示词版本
+  subject_mappings?: Record<string, string>; // V2新增：主体映射 {"角色A": "uuid", ...}
+  prompt_history?: PromptHistoryVersion[]; // V2新增：提示词历史版本
   storyboards: Storyboard[];
 }
 
@@ -121,6 +134,8 @@ export interface CreateProjectRequest {
 export interface UpdateProjectRequest {
   name?: string;
   storyboards?: Partial<Storyboard>[];
+  aspect_ratio?: AspectRatio; // V2新增
+  subject_mappings?: Record<string, string>; // V2新增
 }
 
 // 生成提示词请求
@@ -139,6 +154,7 @@ export interface CharacterRef {
 export interface GenerateImageRequest {
   storyboard_index: number;
   character_images?: string[]; // 角色参考图片数组（支持base64或URL）
+  aspect_ratio?: AspectRatio; // V2新增：图片比例
   // 注意：ref_storyboard_indexes 已移至 Storyboard 模型，由后端自动读取
 }
 
@@ -367,3 +383,189 @@ export interface StructuredPromptItem {
   character_refs: string[];
   character_images: { [key: string]: string };
 }
+
+// ============ V2 新增类型定义 ============
+
+// ============ 全局主体库类型 ============
+
+// 全局主体（服务端存储）
+export interface Subject {
+  id: string; // UUID
+  type: SubjectType;
+  identifier?: string; // 已废弃，保留兼容
+  name?: string;
+  image_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// 主体列表响应
+export interface SubjectListResponse {
+  subjects: Subject[];
+  total: number;
+}
+
+// 创建主体请求（FormData，这里定义字段）
+export interface CreateSubjectFields {
+  type: SubjectType;
+  name?: string;
+  // image 通过 FormData 传递
+}
+
+// 更新主体请求（FormData，这里定义字段）
+export interface UpdateSubjectFields {
+  name?: string;
+  remove_image?: boolean;
+  // image 通过 FormData 传递
+}
+
+// ============ 提示词历史版本类型 ============
+
+// 对话消息
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// 历史版本中的分镜（不含图片/视频）
+export interface PromptHistoryStoryboard {
+  index: number;
+  text_to_image: string;
+  image_to_video: string;
+  character_refs?: string[] | null;
+  is_prompt_edited: boolean;
+}
+
+// 提示词历史版本
+export interface PromptHistoryVersion {
+  version: string; // v1, v2, v3...
+  created_at: string;
+  parent_version?: string; // 父版本号（v1无此字段）
+  instruction: string; // 生成时的用户指令
+  conversation_history: ConversationMessage[]; // Gemini对话历史
+  storyboards: PromptHistoryStoryboard[]; // 该版本的分镜提示词
+}
+
+// 历史版本摘要（用于列表展示）
+export interface PromptHistorySummary {
+  version: string;
+  created_at: string;
+  instruction: string;
+  storyboard_count: number;
+  parent_version?: string;
+}
+
+// 历史版本列表响应
+export interface PromptHistoryListResponse {
+  current_version: string;
+  versions: PromptHistorySummary[];
+}
+
+// ============ 提示词生成请求/响应 ============
+
+// 继续对话生成请求
+export interface ContinuePromptsRequest {
+  instruction: string;
+}
+
+// 继续对话生成响应
+export interface ContinuePromptsResponse {
+  success: boolean;
+  version: string;
+  storyboard_count: number;
+  message: string;
+  error?: string;
+}
+
+// 重新生成请求
+export interface RegeneratePromptsFromVersionRequest {
+  from_version: string;
+  instruction: string;
+}
+
+// 重新生成响应
+export interface RegeneratePromptsFromVersionResponse {
+  success: boolean;
+  version: string;
+  deleted_versions: string[];
+  storyboard_count: number;
+  message: string;
+  error?: string;
+}
+
+// 切换版本请求
+export interface SwitchVersionRequest {
+  version: string;
+}
+
+// 切换版本响应（后端返回简单字符串，前端包装）
+export type SwitchVersionResponse = string;
+
+// ============ 项目复制类型 ============
+
+// 复制项目请求
+export interface CopyProjectRequest {
+  name: string;
+}
+
+// 复制项目响应
+export interface CopyProjectResponse {
+  success: boolean;
+  source_project_id: string;
+  new_project_id: string;
+  message: string;
+}
+
+// ============ 分镜管理类型 ============
+
+// 删除分镜响应
+export interface DeleteStoryboardResponse {
+  success: boolean;
+  deleted_index: number;
+  new_storyboard_count: number;
+  message: string;
+  error?: string;
+}
+
+// 新增分镜请求
+export interface AddStoryboardRequest {
+  position: number;
+  insert_type: InsertType;
+}
+
+// 新增分镜响应
+export interface AddStoryboardResponse {
+  success: boolean;
+  new_index: number;
+  new_storyboard_count: number;
+  storyboard: Storyboard;
+  message?: string;
+  error?: string;
+}
+
+// 交换分镜请求
+export interface SwapStoryboardsRequest {
+  index_a: number;
+  index_b: number;
+}
+
+// 交换分镜响应
+export interface SwapStoryboardsResponse {
+  success: boolean;
+  swapped: [number, number];
+  message: string;
+  error?: string;
+}
+
+// ============ 主体类型常量 ============
+
+export const SUBJECT_TYPE_LABELS: Record<SubjectType, string> = {
+  character: '角色',
+  object: '物品',
+  scene: '场景'
+};
+
+export const ASPECT_RATIO_LABELS: Record<AspectRatio, string> = {
+  '9:16': '竖屏 9:16',
+  '16:9': '横屏 16:9'
+};

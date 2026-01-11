@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, Eye, Trash2, Video } from 'lucide-react';
+import { MoreHorizontal, Eye, Trash2, Video, Copy } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,14 +10,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { AlertModal } from '@/components/modal/alert-modal';
+import { CopyProjectDialog } from './copy-project-dialog';
 import type { ProjectListItem, ProjectStatus } from '@/types/youtube';
 
 interface ProjectCardProps {
   project: ProjectListItem;
   onDelete: (id: string) => Promise<void>;
+  onCopy?: (id: string, newName: string) => Promise<void>;
 }
 
 // 与后端ProjectStatus枚举对齐
@@ -37,9 +40,10 @@ const statusConfig: Record<
   failed: { label: '失败', variant: 'destructive' }
 };
 
-export function ProjectCard({ project, onDelete }: ProjectCardProps) {
+export function ProjectCard({ project, onDelete, onCopy }: ProjectCardProps) {
   const router = useRouter();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const status = statusConfig[project.status] || {
@@ -58,6 +62,12 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
       setDeleteModalOpen(false);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleCopy = async (newName: string) => {
+    if (onCopy) {
+      await onCopy(project.id, newName);
     }
   };
 
@@ -88,6 +98,13 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
                   <Eye className='mr-2 h-4 w-4' />
                   查看
                 </DropdownMenuItem>
+                {onCopy && (
+                  <DropdownMenuItem onClick={() => setCopyDialogOpen(true)}>
+                    <Copy className='mr-2 h-4 w-4' />
+                    复制
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => setDeleteModalOpen(true)}
                   className='text-destructive focus:text-destructive'
@@ -117,6 +134,15 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
         onConfirm={handleDelete}
         loading={isDeleting}
       />
+
+      {onCopy && (
+        <CopyProjectDialog
+          open={copyDialogOpen}
+          onOpenChange={setCopyDialogOpen}
+          originalName={project.name}
+          onConfirm={handleCopy}
+        />
+      )}
     </>
   );
 }

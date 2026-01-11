@@ -1,9 +1,9 @@
 # Tech Stack
 
 ## Framework & Runtime
-- Next.js 15.2.4 (App Router with Turbopack)
-- React 19
-- TypeScript 5.7 (strict mode)
+- Next.js 15.5.9 (App Router with Turbopack)
+- React 19.0.3
+- TypeScript 5.7.2 (strict mode)
 
 ## Styling
 - Tailwind CSS 4.0

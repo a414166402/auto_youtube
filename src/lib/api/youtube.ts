@@ -21,11 +21,33 @@ import type {
   ProjectStatus,
   MediaStatsResponse,
   MediaCleanupResponse,
-  MediaCleanupType
+  MediaCleanupType,
+  // V2 新增类型
+  SubjectType,
+  Subject,
+  SubjectListResponse,
+  PromptHistoryListResponse,
+  ContinuePromptsRequest,
+  ContinuePromptsResponse,
+  RegeneratePromptsFromVersionRequest,
+  RegeneratePromptsFromVersionResponse,
+  SwitchVersionRequest,
+  SwitchVersionResponse,
+  CopyProjectRequest,
+  CopyProjectResponse,
+  DeleteStoryboardResponse,
+  AddStoryboardRequest,
+  AddStoryboardResponse,
+  SwapStoryboardsRequest,
+  SwapStoryboardsResponse,
+  AspectRatio
 } from '@/types/youtube';
 import { mockYoutubeApi, USE_MOCK_DATA } from './youtube-mock';
 
 const API_BASE = '/api/youtube';
+
+// 图片上传大小限制（5MB）
+export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 /**
  * 通用API请求函数
@@ -47,6 +69,42 @@ async function fetchApi<T>(
   }
 
   return response.json();
+}
+
+/**
+ * FormData API请求函数（用于文件上传）
+ */
+async function fetchApiFormData<T>(
+  endpoint: string,
+  formData: FormData,
+  method: 'POST' | 'PUT' = 'POST'
+): Promise<T> {
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    method,
+    body: formData
+    // 不设置 Content-Type，让浏览器自动设置 multipart/form-data
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: '请求失败' }));
+    throw new Error(error.error || error.detail || error.message || '请求失败');
+  }
+
+  return response.json();
+}
+
+/**
+ * 验证图片文件大小
+ */
+export function validateImageSize(file: File): boolean {
+  return file.size <= MAX_IMAGE_SIZE;
+}
+
+/**
+ * 获取图片大小限制的友好显示文本
+ */
+export function getMaxImageSizeText(): string {
+  return `${MAX_IMAGE_SIZE / 1024 / 1024}MB`;
 }
 
 // ============ 项目管理 API ============
@@ -693,4 +751,232 @@ export async function cleanupMedia(
       method: 'POST'
     }
   );
+}
+
+// ============ V2 新增：全局主体库 API ============
+
+/**
+ * 获取全局主体列表
+ * GET /api/youtube/subjects?type=character
+ */
+export async function getSubjects(
+  type?: SubjectType
+): Promise<SubjectListResponse> {
+  const params = type ? `?type=${type}` : '';
+  return fetchApi<SubjectListResponse>(`/subjects${params}`);
+}
+
+/**
+ * 创建主体
+ * POST /api/youtube/subjects
+ * @param type 主体类型
+ * @param name 名称（可选）
+ * @param image 图片文件（可选）
+ */
+export async function createSubject(
+  type: SubjectType,
+  name?: string,
+  image?: File
+): Promise<Subject> {
+  const formData = new FormData();
+  formData.append('type', type);
+  if (name) formData.append('name', name);
+  if (image) {
+    if (!validateImageSize(image)) {
+      throw new Error(`图片大小不能超过 ${getMaxImageSizeText()}`);
+    }
+    formData.append('image', image);
+  }
+  return fetchApiFormData<Subject>('/subjects', formData, 'POST');
+}
+
+/**
+ * 更新主体
+ * PUT /api/youtube/subjects/{id}
+ * @param id 主体UUID
+ * @param name 名称（可选）
+ * @param image 新图片文件（可选）
+ * @param removeImage 是否删除图片
+ */
+export async function updateSubject(
+  id: string,
+  name?: string,
+  image?: File,
+  removeImage?: boolean
+): Promise<Subject> {
+  const formData = new FormData();
+  if (name !== undefined) formData.append('name', name);
+  if (removeImage) formData.append('remove_image', 'true');
+  if (image) {
+    if (!validateImageSize(image)) {
+      throw new Error(`图片大小不能超过 ${getMaxImageSizeText()}`);
+    }
+    formData.append('image', image);
+  }
+  return fetchApiFormData<Subject>(`/subjects/${id}`, formData, 'PUT');
+}
+
+/**
+ * 删除主体
+ * DELETE /api/youtube/subjects/{id}
+ * 后端返回简单字符串消息
+ */
+export async function deleteSubject(id: string): Promise<string> {
+  return fetchApi<string>(`/subjects/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+// ============ V2 新增：提示词版本管理 API ============
+
+/**
+ * 获取提示词历史版本列表
+ * GET /api/youtube/projects/{project_id}/prompt-history
+ */
+export async function getPromptHistory(
+  projectId: string
+): Promise<PromptHistoryListResponse> {
+  return fetchApi<PromptHistoryListResponse>(
+    `/projects/${projectId}/prompt-history`
+  );
+}
+
+/**
+ * 继续对话生成提示词
+ * POST /api/youtube/projects/{project_id}/generate/prompts/continue
+ */
+export async function continuePrompts(
+  projectId: string,
+  data: ContinuePromptsRequest
+): Promise<ContinuePromptsResponse> {
+  return fetchApi<ContinuePromptsResponse>(
+    `/projects/${projectId}/generate/prompts/continue`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }
+  );
+}
+
+/**
+ * 从历史版本重新生成提示词
+ * POST /api/youtube/projects/{project_id}/generate/prompts/regenerate
+ */
+export async function regeneratePromptsFromVersion(
+  projectId: string,
+  data: RegeneratePromptsFromVersionRequest
+): Promise<RegeneratePromptsFromVersionResponse> {
+  return fetchApi<RegeneratePromptsFromVersionResponse>(
+    `/projects/${projectId}/generate/prompts/regenerate`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }
+  );
+}
+
+/**
+ * 切换提示词版本
+ * PUT /api/youtube/projects/{project_id}/prompt-version
+ * 后端返回简单字符串消息
+ */
+export async function switchPromptVersion(
+  projectId: string,
+  data: SwitchVersionRequest
+): Promise<{ success: boolean; message: string }> {
+  const message = await fetchApi<string>(
+    `/projects/${projectId}/prompt-version`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }
+  );
+  return { success: true, message };
+}
+
+// ============ V2 新增：项目复制 API ============
+
+/**
+ * 复制项目
+ * POST /api/youtube/projects/{project_id}/copy
+ */
+export async function copyProject(
+  projectId: string,
+  data: CopyProjectRequest
+): Promise<CopyProjectResponse> {
+  return fetchApi<CopyProjectResponse>(`/projects/${projectId}/copy`, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+// ============ V2 新增：分镜管理 API ============
+
+/**
+ * 删除分镜
+ * DELETE /api/youtube/projects/{project_id}/storyboards/{index}
+ */
+export async function deleteStoryboardByIndex(
+  projectId: string,
+  index: number
+): Promise<DeleteStoryboardResponse> {
+  return fetchApi<DeleteStoryboardResponse>(
+    `/projects/${projectId}/storyboards/${index}`,
+    {
+      method: 'DELETE'
+    }
+  );
+}
+
+/**
+ * 新增分镜
+ * POST /api/youtube/projects/{project_id}/storyboards
+ */
+export async function addStoryboard(
+  projectId: string,
+  data: AddStoryboardRequest
+): Promise<AddStoryboardResponse> {
+  return fetchApi<AddStoryboardResponse>(`/projects/${projectId}/storyboards`, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+/**
+ * 交换分镜位置
+ * PUT /api/youtube/projects/{project_id}/storyboards/swap
+ */
+export async function swapStoryboards(
+  projectId: string,
+  data: SwapStoryboardsRequest
+): Promise<SwapStoryboardsResponse> {
+  return fetchApi<SwapStoryboardsResponse>(
+    `/projects/${projectId}/storyboards/swap`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }
+  );
+}
+
+// ============ V2 新增：项目比例设置 ============
+
+/**
+ * 更新项目图片比例
+ */
+export async function updateProjectAspectRatio(
+  projectId: string,
+  aspectRatio: AspectRatio
+): Promise<ProjectResponse> {
+  return updateProject(projectId, { aspect_ratio: aspectRatio });
+}
+
+/**
+ * 更新项目主体映射
+ */
+export async function updateProjectSubjectMappings(
+  projectId: string,
+  subjectMappings: Record<string, string>
+): Promise<ProjectResponse> {
+  return updateProject(projectId, { subject_mappings: subjectMappings });
 }
