@@ -46,11 +46,11 @@ import {
   generateImage,
   generateVideo,
   cleanupMedia,
-  updateProjectAspectRatio
+  updateProjectAspectRatio,
+  getSubjects
 } from '@/lib/api/youtube';
 import {
-  loadGlobalSubjectLibraryAsync,
-  loadProjectSubjectMapping,
+  subjectsToLibrary,
   getSubjectForRef,
   parseFullRef,
   type GlobalSubjectLibrary,
@@ -157,11 +157,17 @@ export default function GeneratePage({ params }: GeneratePageProps) {
       // 设置图片比例
       setAspectRatio(projectData.data.aspect_ratio || '9:16');
 
-      // 加载全局主体库和项目映射
-      const library = await loadGlobalSubjectLibraryAsync();
-      setSubjectLibrary(library);
-      const mapping = loadProjectSubjectMapping(projectId);
-      setProjectMapping(mapping);
+      // 加载项目映射（从项目数据中获取）
+      setProjectMapping(projectData.data.subject_mappings || {});
+
+      // 加载全局主体库（从服务端API获取）
+      try {
+        const subjectsResponse = await getSubjects();
+        const library = subjectsToLibrary(subjectsResponse.subjects);
+        setSubjectLibrary(library);
+      } catch {
+        console.warn('Failed to load subjects from server');
+      }
 
       setError(null);
     } catch (err) {
