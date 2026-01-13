@@ -274,7 +274,7 @@ POST /api/youtube/projects/{project_id}/generate/prompts/continue
 8. 更新 current_prompt_version
 9. 同步更新顶层 storyboards
 
-### 3.3 重新生成（从历史版本）
+### 3.3 重新生成（覆盖当前版本）
 ```
 POST /api/youtube/projects/{project_id}/generate/prompts/regenerate
 ```
@@ -291,21 +291,25 @@ POST /api/youtube/projects/{project_id}/generate/prompts/regenerate
 ```json
 {
   "success": true,
-  "version": "v3",
+  "version": "v2",
   "deleted_versions": ["v3", "v4"],
   "storyboard_count": 15,
-  "message": "从 v2 重新生成，已删除 v3, v4"
+  "message": "已覆盖 v2 版本内容，删除了后续版本 v3, v4"
 }
 ```
 
 **业务逻辑：**
 1. 验证 from_version 存在
-2. 删除 from_version 之后的所有版本
-3. 获取 from_version 及其祖先的 conversation_history
-4. 调用 Gemini 接口生成新内容
-5. 创建新版本，parent_version = from_version
-6. 更新 current_prompt_version
+2. 获取 from_version 的 parent_version 及其祖先的 conversation_history（不包含 from_version 自身的对话）
+3. 调用 Gemini 接口生成新内容
+4. **覆盖** from_version 的内容（storyboards、instruction、conversation_history、created_at）
+5. 删除 from_version 之后的所有版本
+6. 更新 current_prompt_version = from_version
 7. 同步更新顶层 storyboards
+
+**与继续对话的区别：**
+- **继续对话**：基于当前版本创建新版本（V2 → V3），版本号 +1
+- **重新生成**：覆盖当前版本内容（V2 → V2），版本号不变，删除后续版本
 
 ### 3.4 切换提示词版本
 ```

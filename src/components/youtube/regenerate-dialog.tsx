@@ -69,9 +69,6 @@ export function RegenerateDialog({
     }
   };
 
-  // 计算新版本号
-  const newVersion = `v${fromVersionNum + 1}`;
-
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-[500px]'>
@@ -81,28 +78,33 @@ export function RegenerateDialog({
             重新生成
           </DialogTitle>
           <DialogDescription>
-            从版本 {fromVersion} 重新开始对话，生成新版本 {newVersion}
+            覆盖版本 {fromVersion} 的内容，重新生成提示词
           </DialogDescription>
         </DialogHeader>
 
         <div className='space-y-4 py-4'>
           {/* 警告信息 */}
-          {versionsToDelete.length > 0 && (
-            <Alert variant='destructive'>
-              <AlertTriangle className='h-4 w-4' />
-              <AlertDescription>
-                <strong>警告：</strong>此操作将删除以下版本，且不可撤销：
-                <ul className='mt-2 list-inside list-disc'>
-                  {versionsToDelete.map((v) => (
-                    <li key={v.version}>
-                      {v.version} -{' '}
-                      {new Date(v.created_at).toLocaleString('zh-CN')}
-                    </li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
+          <Alert variant='destructive'>
+            <AlertTriangle className='h-4 w-4' />
+            <AlertDescription>
+              <strong>警告：</strong>此操作将覆盖 {fromVersion}{' '}
+              版本的内容，且不可撤销。
+              {versionsToDelete.length > 0 && (
+                <>
+                  <br />
+                  同时将删除以下后续版本：
+                  <ul className='mt-2 list-inside list-disc'>
+                    {versionsToDelete.map((v) => (
+                      <li key={v.version}>
+                        {v.version} -{' '}
+                        {new Date(v.created_at).toLocaleString('zh-CN')}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </AlertDescription>
+          </Alert>
 
           <div className='space-y-2'>
             <Label htmlFor='instruction'>修改指令</Label>
@@ -115,7 +117,7 @@ export function RegenerateDialog({
               disabled={isLoading}
             />
             <p className='text-muted-foreground text-xs'>
-              AI 将从 {fromVersion} 版本重新开始对话，根据您的指令生成新的提示词
+              AI 将根据您的指令重新生成 {fromVersion} 版本的提示词内容
             </p>
           </div>
         </div>

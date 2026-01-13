@@ -401,7 +401,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
     }
   };
 
-  // V2: 重新生成
+  // V2: 重新生成（覆盖当前版本）
   const handleRegenerate = async (
     fromVersion: string,
     newInstruction: string
@@ -412,9 +412,13 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         instruction: newInstruction
       });
       if (result.success) {
+        const deletedMsg =
+          result.deleted_versions.length > 0
+            ? `，已删除后续版本 ${result.deleted_versions.join(', ')}`
+            : '';
         toast({
           title: '重新生成成功',
-          description: `已生成新版本 ${result.version}，删除了 ${result.deleted_versions.length} 个旧版本`
+          description: `已覆盖版本 ${result.version} 的内容${deletedMsg}`
         });
         loadData();
       } else {
