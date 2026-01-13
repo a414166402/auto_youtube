@@ -74,7 +74,7 @@ export function RegenerateDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className='sm:max-w-[500px]'>
+      <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-[500px]'>
         <DialogHeader>
           <DialogTitle className='flex items-center gap-2'>
             <RefreshCw className='h-5 w-5' />

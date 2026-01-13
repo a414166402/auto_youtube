@@ -644,8 +644,8 @@ export default function PromptsPage({ params }: PromptsPageProps) {
             </Button>
           )}
 
-          {/* V2: 重新生成按钮（仅在查看历史版本时显示） */}
-          {storyboards.length > 0 && !isLatestVersion && (
+          {/* V2: 重新生成按钮（始终显示，可从任意版本重新生成） */}
+          {storyboards.length > 0 && (
             <Button
               variant='outline'
               onClick={() => setRegenerateDialogOpen(true)}
