@@ -29,6 +29,12 @@ export const navItems: NavItem[] = [
     isActive: true,
     items: [
       {
+        title: 'Viral Library',
+        url: '/dashboard/youtube/viral',
+        icon: 'flame',
+        shortcut: ['y', 'v']
+      },
+      {
         title: 'Projects',
         url: '/dashboard/youtube/projects',
         icon: 'list',

@@ -32,7 +32,8 @@
     "billing": "Billing",
     "notifications": "Notifications",
     "youtube": "YouTube Tool",
-    "projects": "Projects"
+    "projects": "Projects",
+    "viral": "Viral Library"
   },
   "settings": {
     "title": "Settings",
@@ -206,6 +207,62 @@
     },
     "subject": {
       "uploadLimit": "Image size cannot exceed 5MB"
+    }
+  },
+  "viral": {
+    "title": "Viral Library",
+    "addVideo": "Add Viral",
+    "createProject": "Create Project",
+    "downloadMedia": "Download to Image Host",
+    "edit": "Edit",
+    "delete": "Delete",
+    "viewDetail": "View Detail",
+    "filter": {
+      "keyword": "Search",
+      "tags": "Tags",
+      "dateRange": "Date Range",
+      "allTags": "All Tags"
+    },
+    "form": {
+      "name": "Video Name",
+      "youtubeUrl": "YouTube URL",
+      "viewCount": "View Count",
+      "tags": "Tags",
+      "analysis": "Viral Analysis",
+      "storyboards": "Storyboard Descriptions",
+      "addStoryboard": "Add Storyboard",
+      "instruction": "Adaptation Instruction",
+      "instructionPlaceholder": "Enter adaptation instruction, e.g.: Adapt this video to sci-fi style..."
+    },
+    "detail": {
+      "imageHostStatus": "Image Host Status",
+      "downloaded": "Downloaded",
+      "notDownloaded": "Not Downloaded",
+      "storyboardCount": "Storyboards",
+      "viewCount": "Views"
+    },
+    "settings": {
+      "title": "Viral Settings",
+      "tagManagement": "Tag Management",
+      "addTag": "Add Tag",
+      "tagName": "Tag Name",
+      "tagColor": "Tag Color"
+    },
+    "message": {
+      "createSuccess": "Viral video created",
+      "updateSuccess": "Viral video updated",
+      "deleteSuccess": "Viral video deleted",
+      "downloadSuccess": "Media downloaded successfully",
+      "downloadFailed": "Media download failed",
+      "projectCreated": "Project created, redirecting...",
+      "tagCreateSuccess": "Tag created",
+      "tagUpdateSuccess": "Tag updated",
+      "tagDeleteSuccess": "Tag deleted",
+      "instructionRequired": "Please enter adaptation instruction"
+    },
+    "confirm": {
+      "deleteVideo": "Are you sure you want to delete this viral video?",
+      "deleteTag": "Are you sure you want to delete this tag?"
     }
   }
 }

@@ -35,7 +35,8 @@ import {
   IconList,
   IconCloudDownload,
   IconListCheck,
-  IconBrandYoutube
+  IconBrandYoutube,
+  IconFlame
 } from '@tabler/icons-react';
 
 export type Icon = React.ComponentType<IconProps>;
@@ -76,5 +77,6 @@ export const Icons = {
   cloudDownload: IconCloudDownload,
   list: IconList,
   listChecks: IconListCheck,
-  youtube: IconBrandYoutube
+  youtube: IconBrandYoutube,
+  flame: IconFlame
 };

@@ -32,7 +32,8 @@
     "billing": "账单",
     "notifications": "通知",
     "youtube": "YouTube工具",
-    "projects": "项目列表"
+    "projects": "项目列表",
+    "viral": "爆款库"
   },
   "settings": {
     "title": "设置",
@@ -206,6 +207,62 @@
     },
     "subject": {
       "uploadLimit": "图片大小不能超过 5MB"
+    }
+  },
+  "viral": {
+    "title": "爆款库",
+    "addVideo": "新增爆款",
+    "createProject": "创建项目",
+    "downloadMedia": "下载到图床",
+    "edit": "编辑",
+    "delete": "删除",
+    "viewDetail": "查看详情",
+    "filter": {
+      "keyword": "关键词搜索",
+      "tags": "标签筛选",
+      "dateRange": "时间范围",
+      "allTags": "全部标签"
+    },
+    "form": {
+      "name": "视频名称",
+      "youtubeUrl": "YouTube URL",
+      "viewCount": "播放量",
+      "tags": "标签",
+      "analysis": "爆款分析",
+      "storyboards": "分镜描述",
+      "addStoryboard": "添加分镜",
+      "instruction": "改编指令",
+      "instructionPlaceholder": "请输入改编指令，例如：将这个视频改编成科幻风格..."
+    },
+    "detail": {
+      "imageHostStatus": "图床状态",
+      "downloaded": "已下载",
+      "notDownloaded": "未下载",
+      "storyboardCount": "分镜数",
+      "viewCount": "播放量"
+    },
+    "settings": {
+      "title": "爆款库设置",
+      "tagManagement": "标签管理",
+      "addTag": "新增标签",
+      "tagName": "标签名称",
+      "tagColor": "标签颜色"
+    },
+    "message": {
+      "createSuccess": "爆款视频创建成功",
+      "updateSuccess": "爆款视频更新成功",
+      "deleteSuccess": "爆款视频已删除",
+      "downloadSuccess": "媒体下载成功",
+      "downloadFailed": "媒体下载失败",
+      "projectCreated": "项目创建成功，正在跳转...",
+      "tagCreateSuccess": "标签创建成功",
+      "tagUpdateSuccess": "标签更新成功",
+      "tagDeleteSuccess": "标签已删除",
+      "instructionRequired": "请输入改编指令"
+    },
+    "confirm": {
+      "deleteVideo": "确定要删除这个爆款视频吗？",
+      "deleteTag": "确定要删除这个标签吗？"
     }
   }
 }
