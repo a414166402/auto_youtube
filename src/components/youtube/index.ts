@@ -61,6 +61,9 @@ export {
   useConfirmDialog
 } from './confirm-dialog';
 
+// Conflict dialog (409 error handling)
+export { ConflictDialog } from './conflict-dialog';
+
 // V2 新增组件
 export { VersionSelector } from './version-selector';
 export { ContinueDialog } from './continue-dialog';
@@ -71,3 +74,4 @@ export { SwapStoryboardDialog } from './swap-storyboard-dialog';
 export { CopyProjectDialog } from './copy-project-dialog';
 export { AspectRatioSelector } from './aspect-ratio-selector';
 export { AddSubjectDialog } from './add-subject-dialog';
+export { FullHistoryDialog } from './full-history-dialog';

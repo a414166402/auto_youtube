@@ -73,8 +73,10 @@ import {
   RegenerateDialog,
   DeleteStoryboardDialog,
   AddStoryboardDialog,
-  SwapStoryboardDialog
+  SwapStoryboardDialog,
+  ConflictDialog
 } from '@/components/youtube';
+import { useConflictHandler } from '@/hooks/use-conflict-handler';
 import type {
   ProjectResponse,
   Storyboard,
@@ -198,6 +200,15 @@ export default function PromptsPage({ params }: PromptsPageProps) {
     loadData();
   }, [loadData]);
 
+  // 409 冲突处理
+  const {
+    conflictOpen,
+    conflictDetail,
+    handleConflict,
+    handleRefresh,
+    handleCancel
+  } = useConflictHandler(loadData);
+
   // 更新分镜提示词
   const handleUpdateStoryboard = (
     index: number,
@@ -239,6 +250,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
       }
       await updateProject(projectId, { subject_mappings: cleanMapping });
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '保存映射失败',
         description: err instanceof Error ? err.message : '保存主体映射失败',
@@ -314,6 +326,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
       setHasChanges(false);
       loadData();
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '保存失败',
         description: err instanceof Error ? err.message : '保存提示词失败',
@@ -365,6 +378,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         loadData();
       }
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '切换失败',
         description: err instanceof Error ? err.message : '切换版本失败',
@@ -455,6 +469,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         });
       }
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '删除失败',
         description: err instanceof Error ? err.message : '删除分镜失败',
@@ -487,6 +502,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         });
       }
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '新增失败',
         description: err instanceof Error ? err.message : '新增分镜失败',
@@ -516,6 +532,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         });
       }
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '交换失败',
         description: err instanceof Error ? err.message : '交换分镜失败',
@@ -630,6 +647,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
           {/* V2: 版本选择器 */}
           {versions.length > 0 && (
             <VersionSelector
+              projectId={projectId}
               currentVersion={currentVersion}
               versions={versions}
               onVersionChange={handleVersionChange}
@@ -980,6 +998,14 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         currentIndex={selectedStoryboardIndex}
         totalCount={storyboards.length}
         onConfirm={handleSwapStoryboards}
+      />
+
+      {/* 409 冲突提示对话框 */}
+      <ConflictDialog
+        open={conflictOpen}
+        onRefresh={handleRefresh}
+        onCancel={handleCancel}
+        detail={conflictDetail}
       />
     </div>
   );

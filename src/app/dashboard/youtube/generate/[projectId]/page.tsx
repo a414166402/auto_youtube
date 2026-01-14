@@ -60,6 +60,8 @@ import {
 } from '@/lib/subject-config';
 import { VideoPlayer } from '@/components/youtube/video-player';
 import { AspectRatioSelector } from '@/components/youtube/aspect-ratio-selector';
+import { ConflictDialog } from '@/components/youtube/conflict-dialog';
+import { useConflictHandler } from '@/hooks/use-conflict-handler';
 import type {
   ProjectResponse,
   GeneratedImage,
@@ -181,6 +183,15 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     loadData();
   }, [loadData]);
 
+  // 409 冲突处理
+  const {
+    conflictOpen,
+    conflictDetail,
+    handleConflict,
+    handleRefresh,
+    handleCancel
+  } = useConflictHandler(loadData);
+
   // 更新图片比例
   const handleAspectRatioChange = async (newRatio: AspectRatio) => {
     if (!project || newRatio === aspectRatio) return;
@@ -194,6 +205,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         description: `图片比例已设置为 ${newRatio === '9:16' ? '竖屏 9:16' : '横屏 16:9'}`
       });
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '更新失败',
         description: err instanceof Error ? err.message : '更新图片比例失败',
@@ -346,6 +358,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         description: `分镜 #${storyboardIndex + 1} 图片已选择`
       });
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '选择失败',
         description: err instanceof Error ? err.message : '选择图片失败',
@@ -381,6 +394,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         description: `分镜 #${storyboardIndex + 1} 视频已选择`
       });
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '选择失败',
         description: err instanceof Error ? err.message : '选择视频失败',
@@ -709,6 +723,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
             : `分镜 #${storyboardIndex + 1} 已切换为文生图模式`
       });
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '更新失败',
         description: err instanceof Error ? err.message : '更新角色引用失败',
@@ -750,6 +765,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
             : `分镜 #${storyboardIndex + 1} 已清除参考分镜`
       });
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '更新失败',
         description: err instanceof Error ? err.message : '更新参考分镜失败',
@@ -798,6 +814,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         description: `分镜 #${storyboardIndex + 1} 提示词已更新`
       });
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '保存失败',
         description: err instanceof Error ? err.message : '保存提示词失败',
@@ -854,6 +871,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         description: `分镜 #${storyboardIndex + 1} 视频提示词已更新`
       });
     } catch (err) {
+      if (handleConflict(err)) return;
       toast({
         title: '保存失败',
         description: err instanceof Error ? err.message : '保存视频提示词失败',
@@ -1884,6 +1902,14 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         open={previewVideoOpen}
         onOpenChange={setPreviewVideoOpen}
         title='视频预览'
+      />
+
+      {/* 409 冲突对话框 */}
+      <ConflictDialog
+        open={conflictOpen}
+        onRefresh={handleRefresh}
+        onCancel={handleCancel}
+        detail={conflictDetail}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, History, Clock } from 'lucide-react';
+import { ChevronDown, History, Clock, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -12,9 +12,11 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { FullHistoryDialog } from './full-history-dialog';
 import type { PromptHistorySummary } from '@/types/youtube';
 
 interface VersionSelectorProps {
+  projectId: string;
   currentVersion: string;
   versions: PromptHistorySummary[];
   onVersionChange: (version: string) => void;
@@ -46,12 +48,14 @@ function truncateInstruction(
 }
 
 export function VersionSelector({
+  projectId,
   currentVersion,
   versions,
   onVersionChange,
   disabled = false
 }: VersionSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
 
   // 按版本号倒序排列（最新的在前）
   const sortedVersions = [...versions].sort((a, b) => {
@@ -127,7 +131,25 @@ export function VersionSelector({
             </DropdownMenuItem>
           );
         })}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => {
+            setOpen(false);
+            setHistoryDialogOpen(true);
+          }}
+          className='gap-2'
+        >
+          <FileText className='h-4 w-4' />
+          查看全部历史
+        </DropdownMenuItem>
       </DropdownMenuContent>
+
+      {/* 完整历史对话框 */}
+      <FullHistoryDialog
+        projectId={projectId}
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+      />
     </DropdownMenu>
   );
 }

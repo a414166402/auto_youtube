@@ -232,8 +232,13 @@ export async function getProjects(params?: {
 /**
  * 获取项目详情
  * GET /api/youtube/projects/{project_id}
+ * @param projectId 项目ID
+ * @param options.fullHistory 是否获取完整提示词历史（默认false，只返回当前版本历史）
  */
-export async function getProject(projectId: string): Promise<ProjectResponse> {
+export async function getProject(
+  projectId: string,
+  options?: { fullHistory?: boolean }
+): Promise<ProjectResponse> {
   if (USE_MOCK_DATA) {
     const result = await mockYoutubeApi.getProject(projectId);
     return {
@@ -249,7 +254,8 @@ export async function getProject(projectId: string): Promise<ProjectResponse> {
       updated_at: result.updated_at
     };
   }
-  return fetchApi<ProjectResponse>(`/projects/${projectId}`);
+  const queryParams = options?.fullHistory ? '?full_history=true' : '';
+  return fetchApi<ProjectResponse>(`/projects/${projectId}${queryParams}`);
 }
 
 /**

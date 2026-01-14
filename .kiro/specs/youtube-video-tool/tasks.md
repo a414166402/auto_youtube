@@ -344,23 +344,24 @@
   - 确保所有组件无编译错误
   - 如有问题请询问用户
 
-- [-] 17. API v2 变更支持 - 并发冲突处理
-  - [-] 17.1 更新API客户端添加409错误处理
+- [x] 17. API v2 变更支持 - 并发冲突处理
+  - [x] 17.1 更新API客户端添加409错误处理
     - 更新 `src/lib/api/youtube.ts`
     - 添加统一的409错误检测和处理逻辑
     - 创建 ConflictError 类型定义
     - _Requirements: 9.1, 9.4_
 
-  - [ ] 17.2 创建冲突提示对话框组件
+  - [x] 17.2 创建冲突提示对话框组件
     - 创建 `src/components/youtube/conflict-dialog.tsx`
     - 显示友好的冲突提示信息
     - 包含"刷新页面"和"取消"按钮
     - _Requirements: 9.2, 9.3_
 
-  - [ ] 17.3 在受影响的页面集成冲突处理
-    - 更新项目详情页面处理409错误
-    - 更新分镜编辑页面处理409错误
+  - [x] 17.3 在受影响的页面集成冲突处理
+    - 创建 `src/hooks/use-conflict-handler.ts` 统一冲突处理Hook
     - 更新提示词编辑页面处理409错误
+    - 更新素材生成页面处理409错误
+    - （项目详情页和分镜页只有读操作，无需处理）
     - _Requirements: 9.4, 9.5_
 
   - [ ]* 17.4 编写409冲突处理单元测试
@@ -371,14 +372,14 @@
     - **Property 18: 冲突处理覆盖范围**
     - **Validates: Requirements 9.1, 9.2, 9.3, 9.4**
 
-- [ ] 18. API v2 变更支持 - 提示词历史优化
-  - [ ] 18.1 更新API客户端支持full_history参数
+- [x] 18. API v2 变更支持 - 提示词历史优化
+  - [x] 18.1 更新API客户端支持full_history参数
     - 更新 `src/lib/api/youtube.ts` 的 getProject 函数
     - 添加 full_history 可选参数
     - 默认不传参数（只获取当前版本历史）
     - _Requirements: 10.1, 10.3_
 
-  - [ ] 18.2 更新提示词历史组件
+  - [x] 18.2 更新提示词历史组件
     - 更新 `src/components/youtube/prompt-history.tsx`
     - 添加"查看全部历史"按钮
     - 点击时调用API传入 full_history=true
