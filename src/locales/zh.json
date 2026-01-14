@@ -31,9 +31,11 @@
     "overview": "概览",
     "billing": "账单",
     "notifications": "通知",
-    "youtube": "YouTube工具",
-    "projects": "项目列表",
-    "viral": "爆款库"
+    "videoGeneration": "视频生成",
+    "viralLibrary": "爆款库",
+    "videoProduction": "视频制作",
+    "viralSettings": "爆款库设置",
+    "productionSettings": "视频制作设置"
   },
   "settings": {
     "title": "设置",

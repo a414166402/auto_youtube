@@ -22,29 +22,32 @@ export const navItems: NavItem[] = [
     items: [] // Empty array as there are no child items for Dashboard
   },
   {
-    title: 'YouTube',
-    url: '/dashboard/youtube',
-    icon: 'youtube',
-    shortcut: ['y', 't'],
+    title: 'Viral Library',
+    url: '/dashboard/youtube/viral',
+    icon: 'flame',
+    shortcut: ['v', 'l'],
+    isActive: false,
+    items: [
+      {
+        title: 'Viral Settings',
+        url: '/dashboard/youtube/viral/settings',
+        icon: 'settings',
+        shortcut: ['v', 's']
+      }
+    ]
+  },
+  {
+    title: 'Video Production',
+    url: '/dashboard/youtube/projects',
+    icon: 'video',
+    shortcut: ['v', 'p'],
     isActive: true,
     items: [
       {
-        title: 'Viral Library',
-        url: '/dashboard/youtube/viral',
-        icon: 'flame',
-        shortcut: ['y', 'v']
-      },
-      {
-        title: 'Projects',
-        url: '/dashboard/youtube/projects',
-        icon: 'list',
-        shortcut: ['y', 'p']
-      },
-      {
-        title: 'Settings',
+        title: 'Production Settings',
         url: '/dashboard/youtube/settings',
         icon: 'settings',
-        shortcut: ['y', 's']
+        shortcut: ['p', 's']
       }
     ]
   },

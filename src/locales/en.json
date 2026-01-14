@@ -31,9 +31,11 @@
     "overview": "Overview",
     "billing": "Billing",
     "notifications": "Notifications",
-    "youtube": "YouTube Tool",
-    "projects": "Projects",
-    "viral": "Viral Library"
+    "videoGeneration": "Video Generation",
+    "viralLibrary": "Viral Library",
+    "videoProduction": "Video Production",
+    "viralSettings": "Viral Settings",
+    "productionSettings": "Production Settings"
   },
   "settings": {
     "title": "Settings",

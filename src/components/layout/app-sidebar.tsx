@@ -77,8 +77,19 @@ export default function AppSidebar() {
 
   // 辅助函数，用于将标题转换为翻译键
   const getTitleKey = (title: string) => {
-    // 将标题转换为小写并去除空格，例如 "Projects" -> "projects"
-    // 假设翻译键是标题的第一个单词的小写形式
+    // 特殊映射
+    const specialMappings: Record<string, string> = {
+      'Viral Library': 'viralLibrary',
+      'Video Production': 'videoProduction',
+      'Viral Settings': 'viralSettings',
+      'Production Settings': 'productionSettings'
+    };
+
+    if (specialMappings[title]) {
+      return specialMappings[title];
+    }
+
+    // 默认：将标题转换为小驼峰
     return title.split(' ')[0].toLowerCase();
   };
 
