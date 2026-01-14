@@ -29,6 +29,12 @@ export const navItems: NavItem[] = [
     isActive: false,
     items: [
       {
+        title: 'Viral List',
+        url: '/dashboard/youtube/viral',
+        icon: 'list',
+        shortcut: ['v', 'l']
+      },
+      {
         title: 'Viral Settings',
         url: '/dashboard/youtube/viral/settings',
         icon: 'settings',
@@ -43,6 +49,12 @@ export const navItems: NavItem[] = [
     shortcut: ['v', 'p'],
     isActive: true,
     items: [
+      {
+        title: 'Project List',
+        url: '/dashboard/youtube/projects',
+        icon: 'list',
+        shortcut: ['p', 'l']
+      },
       {
         title: 'Production Settings',
         url: '/dashboard/youtube/settings',

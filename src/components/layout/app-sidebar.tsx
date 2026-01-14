@@ -80,7 +80,9 @@ export default function AppSidebar() {
     // 特殊映射
     const specialMappings: Record<string, string> = {
       'Viral Library': 'viralLibrary',
+      'Viral List': 'viralList',
       'Video Production': 'videoProduction',
+      'Project List': 'projectList',
       'Viral Settings': 'viralSettings',
       'Production Settings': 'productionSettings'
     };

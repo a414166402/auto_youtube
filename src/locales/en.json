@@ -33,7 +33,9 @@
     "notifications": "Notifications",
     "videoGeneration": "Video Generation",
     "viralLibrary": "Viral Library",
+    "viralList": "Viral List",
     "videoProduction": "Video Production",
+    "projectList": "Project List",
     "viralSettings": "Viral Settings",
     "productionSettings": "Production Settings"
   },
