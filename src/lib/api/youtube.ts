@@ -49,8 +49,33 @@ const API_BASE = '/api/youtube';
 // 图片上传大小限制（5MB）
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
+// ============ 409 冲突错误处理 ============
+
+/**
+ * 并发冲突错误类
+ * 当后端返回 HTTP 409 时抛出此错误
+ */
+export class ConflictError extends Error {
+  public readonly status = 409;
+  public readonly detail: string;
+
+  constructor(message: string, detail?: string) {
+    super(message);
+    this.name = 'ConflictError';
+    this.detail = detail || message;
+  }
+}
+
+/**
+ * 检查是否为冲突错误
+ */
+export function isConflictError(error: unknown): error is ConflictError {
+  return error instanceof ConflictError;
+}
+
 /**
  * 通用API请求函数
+ * 支持 409 冲突错误检测
  */
 async function fetchApi<T>(
   endpoint: string,
@@ -65,6 +90,15 @@ async function fetchApi<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: '请求失败' }));
+
+    // 检测 409 冲突错误
+    if (response.status === 409) {
+      throw new ConflictError(
+        '数据已被修改，请刷新页面后重试',
+        error.detail || error.error || error.message
+      );
+    }
+
     throw new Error(error.error || error.detail || error.message || '请求失败');
   }
 
@@ -73,6 +107,7 @@ async function fetchApi<T>(
 
 /**
  * FormData API请求函数（用于文件上传）
+ * 支持 409 冲突错误检测
  */
 async function fetchApiFormData<T>(
   endpoint: string,
@@ -87,6 +122,15 @@ async function fetchApiFormData<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: '请求失败' }));
+
+    // 检测 409 冲突错误
+    if (response.status === 409) {
+      throw new ConflictError(
+        '数据已被修改，请刷新页面后重试',
+        error.detail || error.error || error.message
+      );
+    }
+
     throw new Error(error.error || error.detail || error.message || '请求失败');
   }
 

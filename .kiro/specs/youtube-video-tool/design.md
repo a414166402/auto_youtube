@@ -876,6 +876,101 @@ POST   /tasks/{task_id}/cancel                     # 取消任务
    - Gemini API失败: 显示"AI服务暂时不可用"，允许重试
    - Grok API失败: 显示"视频生成服务暂时不可用"，允许重试
    - YouTube下载失败: 显示"视频下载失败"，检查URL有效性
+6. **并发冲突错误 (HTTP 409)**:
+   - 显示"数据已被修改，请刷新页面后重试"提示
+   - 提供"刷新"按钮自动重新获取最新数据
+   - 尽可能保留用户当前的输入内容
+
+### 409冲突处理设计
+
+```typescript
+// src/lib/api/youtube.ts 中添加统一的409处理
+
+interface ConflictError {
+  status: 409;
+  message: string;
+  expectedVersion?: number;
+  currentVersion?: number;
+}
+
+// 统一的API请求包装函数
+async function apiRequest<T>(
+  url: string,
+  options: RequestInit
+): Promise<T> {
+  const response = await fetch(url, options);
+  
+  if (response.status === 409) {
+    const error = await response.json();
+    throw new ConflictError(
+      '数据已被修改，请刷新页面后重试',
+      error.detail
+    );
+  }
+  
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status}`);
+  }
+  
+  return response.json();
+}
+
+// 受影响的接口列表：
+// - PUT /projects/{project_id} - 更新项目
+// - POST /projects/{project_id}/media/cleanup - 清理媒体
+// - DELETE /projects/{project_id}/storyboards/{index} - 删除分镜
+// - POST /projects/{project_id}/storyboards - 新增分镜
+// - POST /projects/{project_id}/storyboards/swap - 交换分镜
+// - POST /projects/{project_id}/prompts/switch - 切换版本
+```
+
+### 前端冲突处理组件
+
+```typescript
+// src/components/youtube/conflict-dialog.tsx
+
+interface ConflictDialogProps {
+  open: boolean;
+  onRefresh: () => void;
+  onCancel: () => void;
+}
+
+export function ConflictDialog({ open, onRefresh, onCancel }: ConflictDialogProps) {
+  return (
+    <AlertDialog open={open}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>数据冲突</AlertDialogTitle>
+          <AlertDialogDescription>
+            数据已被其他用户修改，请刷新页面获取最新数据后重试。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>取消</AlertDialogCancel>
+          <AlertDialogAction onClick={onRefresh}>刷新页面</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+```
+
+### 提示词历史API参数设计
+
+```typescript
+// GET /projects/{project_id} 接口参数
+
+interface GetProjectParams {
+  full_history?: boolean;  // 默认 false，只返回当前版本的 prompt_history
+}
+
+// 调用示例
+// 默认调用：只获取当前版本的 prompt_history
+const project = await getProject(projectId);
+
+// 需要查看历史时：获取完整 prompt_history
+const projectWithHistory = await getProject(projectId, { full_history: true });
+```
 
 ### 前端错误边界
 
@@ -961,6 +1056,22 @@ POST   /tasks/{task_id}/cancel                     # 取消任务
 *For any* 项目列表查询，每个项目应显示两个分镜数：源视频分镜数和微创新分镜数（如果已生成提示词）。
 **Validates: Requirements 1.6**
 
+### Property 17: 409冲突错误处理
+*For any* 返回HTTP 409状态码的API响应，前端应显示冲突提示信息并提供刷新选项，不应导致应用崩溃。
+**Validates: Requirements 9.1, 9.2, 9.3**
+
+### Property 18: 冲突处理覆盖范围
+*For any* 以下操作（项目更新、媒体清理、分镜删除、分镜新增、分镜交换、版本切换），当返回409错误时，应触发统一的冲突处理逻辑。
+**Validates: Requirements 9.4**
+
+### Property 19: 提示词历史默认加载
+*For any* 项目详情查询（不带full_history参数），返回的prompt_history应只包含当前版本的历史记录。
+**Validates: Requirements 10.1**
+
+### Property 20: 提示词完整历史加载
+*For any* 项目详情查询（带full_history=true参数），返回的prompt_history应包含所有历史版本记录。
+**Validates: Requirements 10.2, 10.3**
+
 ## Testing Strategy
 
 ### 单元测试
@@ -968,11 +1079,14 @@ POST   /tasks/{task_id}/cancel                     # 取消任务
 - 数据模型验证测试
 - 状态转换逻辑测试
 - 进度计算函数测试
+- 409冲突错误处理测试
+- full_history参数传递测试
 
 ### 集成测试
 - API端点测试（使用mock外部服务）
 - 数据库CRUD操作测试
 - 文件上传/下载测试
+- 并发冲突场景测试（模拟409响应）
 
 ### Property-Based Testing
 使用 `fast-check` 库进行属性测试：
@@ -984,3 +1098,4 @@ POST   /tasks/{task_id}/cancel                     # 取消任务
 - 完整工作流测试（创建项目→下载→分镜→提示词→生成）
 - 错误恢复测试
 - 并发操作测试
+- 409冲突恢复测试

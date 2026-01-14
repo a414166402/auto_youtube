@@ -16,6 +16,9 @@ YouTube AI视频制作工具模块，用于辅助用户从对标爆款YouTube视
 - **Gemini_API**: Google的Gemini AI接口，用于解析视频并生成提示词
 - **Grok_Imagine_API**: Grok的图生视频接口，用于批量生成视频
 - **Generation_Result**: 生成结果，包含单次生成的图片或视频及其元数据
+- **Optimistic_Lock**: 乐观锁，用于解决多用户同时操作同一项目时的数据覆盖问题
+- **Data_Version**: 数据版本号，用于乐观锁机制的版本控制
+- **Prompt_History**: 提示词历史版本，记录提示词的所有修改历史
 
 ## Requirements
 
@@ -125,4 +128,28 @@ YouTube AI视频制作工具模块，用于辅助用户从对标爆款YouTube视
 3. IF 生成任务失败 THEN THE Progress_Tracker SHALL 显示错误信息并允许单独重试
 4. THE Progress_Tracker SHALL 支持暂停和继续批量生成任务
 5. WHEN 用户刷新页面 THEN THE Progress_Tracker SHALL 恢复显示当前任务状态
+
+### Requirement 9: 并发冲突处理（乐观锁机制）
+
+**User Story:** As a 视频创作者, I want to 在多人协作时避免数据覆盖, so that I can 确保我的修改不会丢失。
+
+#### Acceptance Criteria
+
+1. WHEN 后端返回HTTP 409 Conflict错误 THEN THE Conflict_Handler SHALL 显示友好的冲突提示信息
+2. WHEN 发生数据冲突 THEN THE Conflict_Handler SHALL 提示用户"数据已被修改，请刷新页面后重试"
+3. WHEN 用户确认冲突提示 THEN THE Conflict_Handler SHALL 自动刷新当前页面数据
+4. THE Conflict_Handler SHALL 在以下操作中处理409错误：项目更新、媒体清理、分镜删除、分镜新增、分镜交换、版本切换
+5. IF 发生409冲突 THEN THE Conflict_Handler SHALL 不丢失用户当前的输入内容（如可能）
+
+### Requirement 10: 提示词历史版本管理
+
+**User Story:** As a 视频创作者, I want to 查看和管理提示词的历史版本, so that I can 追溯修改记录并在需要时恢复。
+
+#### Acceptance Criteria
+
+1. WHEN 用户查看项目详情 THEN THE Project_Viewer SHALL 默认只加载当前版本的提示词历史
+2. WHEN 用户需要查看完整历史 THEN THE Project_Viewer SHALL 提供"查看全部历史"选项
+3. WHEN 用户点击"查看全部历史" THEN THE Project_Viewer SHALL 调用API并传入full_history=true参数
+4. THE Prompt_History_Viewer SHALL 显示每个历史版本的时间戳和修改类型
+5. WHEN 用户选择历史版本 THEN THE Prompt_History_Viewer SHALL 显示该版本的完整提示词内容
 
