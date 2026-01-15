@@ -49,16 +49,19 @@ export function InstructionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-lg'>
-        <DialogHeader>
+      <DialogContent className='flex max-h-[85vh] max-w-lg flex-col'>
+        <DialogHeader className='flex-shrink-0'>
           <DialogTitle>创建项目</DialogTitle>
           <DialogDescription>
             从爆款视频&quot;{videoName}&quot;创建新项目，请输入改编指令
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className='space-y-4'>
-          <div className='space-y-2'>
+        <form
+          onSubmit={handleSubmit}
+          className='flex flex-1 flex-col overflow-hidden'
+        >
+          <div className='flex-1 space-y-2 overflow-y-auto'>
             <Label htmlFor='instruction'>
               改编指令 <span className='text-destructive'>*</span>
             </Label>
@@ -75,7 +78,7 @@ export function InstructionDialog({
             </p>
           </div>
 
-          <div className='flex justify-end gap-2'>
+          <div className='flex flex-shrink-0 justify-end gap-2 pt-4'>
             <Button
               type='button'
               variant='outline'
