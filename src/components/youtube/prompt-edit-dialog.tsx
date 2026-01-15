@@ -186,15 +186,15 @@ export function PromptEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-[650px]'>
-        <DialogHeader>
+      <DialogContent className='flex max-h-[90vh] flex-col sm:max-w-[650px]'>
+        <DialogHeader className='flex-shrink-0'>
           <DialogTitle>编辑提示词</DialogTitle>
           <DialogDescription>
             {prompt && `微创新分镜 #${prompt.storyboard_index} 的提示词`}
           </DialogDescription>
         </DialogHeader>
 
-        <div className='grid gap-4 py-4'>
+        <div className='grid flex-1 gap-4 overflow-y-auto py-4'>
           {/* 文生图提示词 */}
           <div className='grid gap-2'>
             <Label htmlFor='text-to-image'>文生图提示词</Label>
@@ -457,7 +457,7 @@ export function PromptEditDialog({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className='flex-shrink-0'>
           <Button
             variant='outline'
             onClick={() => onOpenChange(false)}

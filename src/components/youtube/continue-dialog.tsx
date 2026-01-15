@@ -57,8 +57,8 @@ export function ContinueDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-[500px]'>
-        <DialogHeader>
+      <DialogContent className='flex max-h-[85vh] flex-col sm:max-w-[500px]'>
+        <DialogHeader className='flex-shrink-0'>
           <DialogTitle className='flex items-center gap-2'>
             <MessageSquarePlus className='h-5 w-5' />
             继续对话
@@ -68,7 +68,7 @@ export function ContinueDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className='space-y-4 py-4'>
+        <div className='flex-1 space-y-4 overflow-y-auto py-4'>
           <div className='space-y-2'>
             <Label htmlFor='instruction'>修改指令</Label>
             <Textarea
@@ -85,7 +85,7 @@ export function ContinueDialog({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className='flex-shrink-0'>
           <Button
             variant='outline'
             onClick={() => handleOpenChange(false)}

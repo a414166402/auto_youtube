@@ -57,12 +57,12 @@ export function ViralVideoDetail({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-h-[90vh] max-w-3xl overflow-y-auto'>
-        <DialogHeader>
+      <DialogContent className='flex max-h-[90vh] max-w-3xl flex-col'>
+        <DialogHeader className='flex-shrink-0'>
           <DialogTitle>{data.name}</DialogTitle>
         </DialogHeader>
 
-        <div className='space-y-6'>
+        <div className='flex-1 space-y-6 overflow-y-auto'>
           {/* 视频预览 */}
           {data.image_host_video_url && !videoError ? (
             <div className='aspect-video overflow-hidden rounded-lg bg-black'>
@@ -181,7 +181,7 @@ export function ViralVideoDetail({
             )}
 
           {/* 操作按钮 */}
-          <div className='flex justify-end gap-2 pt-4'>
+          <div className='flex flex-shrink-0 justify-end gap-2 pt-4'>
             {!hasMedia && (
               <Button
                 variant='outline'

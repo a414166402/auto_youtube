@@ -71,8 +71,8 @@ export function RegenerateDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-[500px]'>
-        <DialogHeader>
+      <DialogContent className='flex max-h-[85vh] flex-col sm:max-w-[500px]'>
+        <DialogHeader className='flex-shrink-0'>
           <DialogTitle className='flex items-center gap-2'>
             <RefreshCw className='h-5 w-5' />
             重新生成
@@ -82,7 +82,7 @@ export function RegenerateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className='space-y-4 py-4'>
+        <div className='flex-1 space-y-4 overflow-y-auto py-4'>
           {/* 警告信息 */}
           <Alert variant='destructive'>
             <AlertTriangle className='h-4 w-4' />
@@ -122,7 +122,7 @@ export function RegenerateDialog({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className='flex-shrink-0'>
           <Button
             variant='outline'
             onClick={() => handleOpenChange(false)}
