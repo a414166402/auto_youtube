@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { MoreHorizontal, Eye, Trash2, Video, Copy } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,7 @@ export function ProjectCard({ project, onDelete, onCopy }: ProjectCardProps) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const status = statusConfig[project.status] || {
     label: project.status,
@@ -71,13 +73,27 @@ export function ProjectCard({ project, onDelete, onCopy }: ProjectCardProps) {
     }
   };
 
+  // 判断是否有有效的封面图片
+  const hasCoverImage = project.cover_url && !imageError;
+
   return (
     <>
       <Card className='group cursor-pointer overflow-hidden transition-shadow hover:shadow-md'>
         <div className='bg-muted relative aspect-video' onClick={handleView}>
-          <div className='flex h-full w-full items-center justify-center'>
-            <Video className='text-muted-foreground h-12 w-12' />
-          </div>
+          {hasCoverImage ? (
+            <Image
+              src={project.cover_url!}
+              alt={project.name}
+              fill
+              className='object-cover'
+              onError={() => setImageError(true)}
+              unoptimized
+            />
+          ) : (
+            <div className='flex h-full w-full items-center justify-center'>
+              <Video className='text-muted-foreground h-12 w-12' />
+            </div>
+          )}
           <div className='absolute top-2 right-2'>
             <Badge variant={status.variant}>{status.label}</Badge>
           </div>

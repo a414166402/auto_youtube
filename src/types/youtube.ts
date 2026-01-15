@@ -83,6 +83,7 @@ export interface ProjectListItem {
   youtube_url: string;
   status: ProjectStatus;
   storyboard_count: number;
+  cover_url?: string | null; // 封面图片URL（从viral_context.image_host_cover_url提取）
   created_at: string;
   updated_at: string;
 }
