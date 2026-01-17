@@ -95,10 +95,28 @@ export function PromptCard({
       <CardContent className='space-y-4'>
         {/* 提示词内容 - 不显示分镜缩略图 */}
         <div className='space-y-3'>
+          {/* 分镜概述 */}
+          {prompt.storyboard_summary && (
+            <div className='space-y-1'>
+              <p className='text-muted-foreground text-xs font-medium'>
+                分镜概述
+                <span className='text-muted-foreground/60 ml-1 text-[10px]'>
+                  (该分镜的简短描述和目的)
+                </span>
+              </p>
+              <p className='bg-primary/5 border-primary/20 rounded-md border p-2 text-sm whitespace-pre-wrap'>
+                {prompt.storyboard_summary}
+              </p>
+            </div>
+          )}
+
           {/* 文生图提示词 */}
           <div className='space-y-1'>
             <p className='text-muted-foreground text-xs font-medium'>
               文生图提示词
+              <span className='text-muted-foreground/60 ml-1 text-[10px]'>
+                (用于生成图片的详细指令)
+              </span>
             </p>
             <p className='bg-muted/50 rounded-md p-2 text-sm whitespace-pre-wrap'>
               {prompt.text_to_image || '暂无提示词'}
@@ -109,6 +127,9 @@ export function PromptCard({
           <div className='space-y-1'>
             <p className='text-muted-foreground text-xs font-medium'>
               图生视频提示词
+              <span className='text-muted-foreground/60 ml-1 text-[10px]'>
+                (用于生成视频的详细指令)
+              </span>
             </p>
             <p className='bg-muted/50 rounded-md p-2 text-sm whitespace-pre-wrap'>
               {prompt.image_to_video || '暂无提示词'}

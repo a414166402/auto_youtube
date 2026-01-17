@@ -183,9 +183,27 @@ export function ImageGenerationCard({
           )}
         </div>
 
+        {/* 分镜概述 */}
+        {storyboard.storyboard_summary && (
+          <div className='text-muted-foreground bg-primary/5 border-primary/20 rounded-md border p-2 text-sm'>
+            <p className='mb-1 text-xs font-medium'>
+              分镜概述
+              <span className='text-muted-foreground/60 ml-1 text-[10px]'>
+                (该分镜的简短描述和目的)
+              </span>
+            </p>
+            <p className='line-clamp-2'>{storyboard.storyboard_summary}</p>
+          </div>
+        )}
+
         {/* 提示词预览 */}
         <div className='text-muted-foreground bg-muted/50 rounded-md p-2 text-sm'>
-          <p className='mb-1 text-xs font-medium'>文生图提示词:</p>
+          <p className='mb-1 text-xs font-medium'>
+            文生图提示词
+            <span className='text-muted-foreground/60 ml-1 text-[10px]'>
+              (用于生成图片的详细指令)
+            </span>
+          </p>
           <p className='line-clamp-2'>{storyboard.text_to_image || '暂无'}</p>
         </div>
       </CardContent>

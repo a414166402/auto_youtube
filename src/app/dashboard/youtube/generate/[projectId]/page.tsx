@@ -120,6 +120,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   const [editingPromptIndex, setEditingPromptIndex] = useState<number | null>(
     null
   );
+  const [editedSummary, setEditedSummary] = useState<string>('');
   const [editedPrompt, setEditedPrompt] = useState<string>('');
   const [savingPrompt, setSavingPrompt] = useState(false);
 
@@ -777,9 +778,11 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   // 开始编辑提示词
   const handleStartEditPrompt = (
     storyboardIndex: number,
+    currentSummary: string,
     currentPrompt: string
   ) => {
     setEditingPromptIndex(storyboardIndex);
+    setEditedSummary(currentSummary || '');
     setEditedPrompt(currentPrompt || '');
   };
 
@@ -792,6 +795,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
       const storyboards = [...project.data.storyboards];
       storyboards[storyboardIndex] = {
         ...storyboards[storyboardIndex],
+        storyboard_summary: editedSummary,
         text_to_image: editedPrompt
       };
 
@@ -807,6 +811,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
       });
 
       setEditingPromptIndex(null);
+      setEditedSummary('');
       setEditedPrompt('');
 
       toast({
@@ -828,6 +833,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   // 取消编辑提示词
   const handleCancelEditPrompt = () => {
     setEditingPromptIndex(null);
+    setEditedSummary('');
     setEditedPrompt('');
   };
 
@@ -1139,12 +1145,36 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                   <div className='space-y-1'>
                     {editingPromptIndex === index ? (
                       <div className='space-y-2'>
-                        <Textarea
-                          value={editedPrompt}
-                          onChange={(e) => setEditedPrompt(e.target.value)}
-                          className='min-h-[60px] resize-none text-xs'
-                          placeholder='输入提示词...'
-                        />
+                        {/* 分镜概述编辑 */}
+                        <div className='space-y-1'>
+                          <Label className='text-[10px]'>
+                            分镜概述
+                            <span className='text-muted-foreground/60 ml-1 text-[9px]'>
+                              (简短描述)
+                            </span>
+                          </Label>
+                          <Textarea
+                            value={editedSummary}
+                            onChange={(e) => setEditedSummary(e.target.value)}
+                            className='min-h-[40px] resize-none text-xs'
+                            placeholder='输入分镜概述...'
+                          />
+                        </div>
+                        {/* 文生图提示词编辑 */}
+                        <div className='space-y-1'>
+                          <Label className='text-[10px]'>
+                            文生图提示词
+                            <span className='text-muted-foreground/60 ml-1 text-[9px]'>
+                              (详细指令)
+                            </span>
+                          </Label>
+                          <Textarea
+                            value={editedPrompt}
+                            onChange={(e) => setEditedPrompt(e.target.value)}
+                            className='min-h-[60px] resize-none text-xs'
+                            placeholder='输入提示词...'
+                          />
+                        </div>
                         <div className='flex gap-1'>
                           <Button
                             size='sm'
@@ -1171,23 +1201,43 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                         </div>
                       </div>
                     ) : (
-                      <div className='flex items-start gap-1'>
-                        <p className='text-muted-foreground line-clamp-3 flex-1 text-xs'>
-                          {storyboard.text_to_image || '暂无提示词'}
-                        </p>
-                        <Button
-                          variant='ghost'
-                          size='sm'
-                          className='h-5 w-5 flex-shrink-0 p-0'
-                          onClick={() =>
-                            handleStartEditPrompt(
-                              index,
-                              storyboard.text_to_image || ''
-                            )
-                          }
-                        >
-                          <Pencil className='h-3 w-3' />
-                        </Button>
+                      <div className='space-y-2'>
+                        {/* 分镜概述显示 */}
+                        {storyboard.storyboard_summary && (
+                          <div className='bg-primary/5 border-primary/20 rounded border p-1.5'>
+                            <p className='text-muted-foreground mb-0.5 text-[10px] font-medium'>
+                              分镜概述
+                            </p>
+                            <p className='text-muted-foreground line-clamp-2 text-xs'>
+                              {storyboard.storyboard_summary}
+                            </p>
+                          </div>
+                        )}
+                        {/* 文生图提示词显示 */}
+                        <div className='flex items-start gap-1'>
+                          <div className='flex-1'>
+                            <p className='text-muted-foreground mb-0.5 text-[10px]'>
+                              文生图提示词
+                            </p>
+                            <p className='text-muted-foreground line-clamp-3 text-xs'>
+                              {storyboard.text_to_image || '暂无提示词'}
+                            </p>
+                          </div>
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            className='h-5 w-5 flex-shrink-0 p-0'
+                            onClick={() =>
+                              handleStartEditPrompt(
+                                index,
+                                storyboard.storyboard_summary || '',
+                                storyboard.text_to_image || ''
+                              )
+                            }
+                          >
+                            <Pencil className='h-3 w-3' />
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>

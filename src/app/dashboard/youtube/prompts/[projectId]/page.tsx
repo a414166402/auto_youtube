@@ -1183,9 +1183,33 @@ function StoryboardPromptCard({
         )}
       </CardHeader>
       <CardContent className='flex-1 space-y-3'>
+        {/* 分镜概述 */}
+        <div className='space-y-1'>
+          <Label className='text-xs'>
+            分镜概述
+            <span className='text-muted-foreground/60 ml-1 text-[9px]'>
+              (简短描述该分镜的内容和目的)
+            </span>
+          </Label>
+          <Textarea
+            value={storyboard.storyboard_summary || ''}
+            onChange={(e) =>
+              onUpdate(index, 'storyboard_summary', e.target.value)
+            }
+            rows={2}
+            className='resize-none text-xs'
+            placeholder='输入分镜概述...'
+          />
+        </div>
+
         {/* 文生图提示词 */}
         <div className='space-y-1'>
-          <Label className='text-xs'>文生图提示词</Label>
+          <Label className='text-xs'>
+            文生图提示词
+            <span className='text-muted-foreground/60 ml-1 text-[9px]'>
+              (用于生成图片的详细指令)
+            </span>
+          </Label>
           <Textarea
             value={storyboard.text_to_image}
             onChange={(e) => onUpdate(index, 'text_to_image', e.target.value)}
@@ -1230,7 +1254,12 @@ function StoryboardPromptCard({
 
         {/* 图生视频提示词 */}
         <div className='space-y-1'>
-          <Label className='text-xs'>图生视频提示词</Label>
+          <Label className='text-xs'>
+            图生视频提示词
+            <span className='text-muted-foreground/60 ml-1 text-[9px]'>
+              (用于生成视频的详细指令)
+            </span>
+          </Label>
           <Textarea
             value={storyboard.image_to_video}
             onChange={(e) => onUpdate(index, 'image_to_video', e.target.value)}

@@ -42,8 +42,9 @@ export interface GeneratedVideo {
 // 分镜数据（与后端Storyboard对齐）
 export interface Storyboard {
   index: number;
-  text_to_image: string; // 文生图提示词
-  image_to_video: string; // 图生视频提示词
+  storyboard_summary?: string; // 分镜概述（简短描述该分镜的内容和目的）
+  text_to_image: string; // 文生图提示词（详细的图片生成指令）
+  image_to_video: string; // 图生视频提示词（详细的视频生成指令）
   character_refs?: string[] | null; // 角色引用标识
   ref_storyboard_indexes?: number[] | null; // 参考分镜索引列表，用于场景一致性
   is_prompt_edited: boolean; // 是否被手动编辑过
@@ -282,6 +283,7 @@ export interface Prompt {
   project_id: string;
   storyboard_id: string;
   storyboard_index: number;
+  storyboard_summary?: string; // 分镜概述
   text_to_image: string;
   image_to_video: string;
   character_refs?: string[];
@@ -431,6 +433,7 @@ export interface ConversationMessage {
 // 历史版本中的分镜（不含图片/视频）
 export interface PromptHistoryStoryboard {
   index: number;
+  storyboard_summary?: string; // 分镜概述
   text_to_image: string;
   image_to_video: string;
   character_refs?: string[] | null;

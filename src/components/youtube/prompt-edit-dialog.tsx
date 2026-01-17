@@ -57,6 +57,7 @@ export interface PromptEditDialogProps {
   onOpenChange: (open: boolean) => void;
   onSave: (
     id: string,
+    storyboardSummary: string,
     textToImage: string,
     imageToVideo: string,
     characterRefs?: string[]
@@ -72,6 +73,7 @@ export function PromptEditDialog({
   onSave,
   onRegenerate
 }: PromptEditDialogProps) {
+  const [storyboardSummary, setStoryboardSummary] = useState('');
   const [textToImage, setTextToImage] = useState('');
   const [imageToVideo, setImageToVideo] = useState('');
   const [selectedCharacterRefs, setSelectedCharacterRefs] = useState<string[]>(
@@ -104,6 +106,7 @@ export function PromptEditDialog({
   // 当提示词数据变化时，更新输入框
   useEffect(() => {
     if (prompt) {
+      setStoryboardSummary(prompt.storyboard_summary || '');
       setTextToImage(prompt.text_to_image || '');
       setImageToVideo(prompt.image_to_video || '');
       setSelectedCharacterRefs(prompt.character_refs || []);
@@ -157,7 +160,13 @@ export function PromptEditDialog({
 
     setIsSaving(true);
     try {
-      await onSave(prompt.id, textToImage, imageToVideo, selectedCharacterRefs);
+      await onSave(
+        prompt.id,
+        storyboardSummary,
+        textToImage,
+        imageToVideo,
+        selectedCharacterRefs
+      );
       onOpenChange(false);
     } finally {
       setIsSaving(false);
@@ -195,9 +204,32 @@ export function PromptEditDialog({
         </DialogHeader>
 
         <div className='grid flex-1 gap-4 overflow-y-auto py-4'>
+          {/* 分镜概述 */}
+          <div className='grid gap-2'>
+            <Label htmlFor='storyboard-summary'>
+              分镜概述
+              <span className='text-muted-foreground ml-2 text-xs'>
+                (简短描述该分镜的内容和目的)
+              </span>
+            </Label>
+            <Textarea
+              id='storyboard-summary'
+              placeholder='输入分镜概述...'
+              value={storyboardSummary}
+              onChange={(e) => setStoryboardSummary(e.target.value)}
+              className='min-h-[80px] resize-none'
+              disabled={isLoading}
+            />
+          </div>
+
           {/* 文生图提示词 */}
           <div className='grid gap-2'>
-            <Label htmlFor='text-to-image'>文生图提示词</Label>
+            <Label htmlFor='text-to-image'>
+              文生图提示词
+              <span className='text-muted-foreground ml-2 text-xs'>
+                (用于生成图片的详细指令)
+              </span>
+            </Label>
             <Textarea
               id='text-to-image'
               placeholder='输入文生图提示词...'
@@ -210,7 +242,12 @@ export function PromptEditDialog({
 
           {/* 图生视频提示词 */}
           <div className='grid gap-2'>
-            <Label htmlFor='image-to-video'>图生视频提示词</Label>
+            <Label htmlFor='image-to-video'>
+              图生视频提示词
+              <span className='text-muted-foreground ml-2 text-xs'>
+                (用于生成视频的详细指令)
+              </span>
+            </Label>
             <Textarea
               id='image-to-video'
               placeholder='输入图生视频提示词...'
