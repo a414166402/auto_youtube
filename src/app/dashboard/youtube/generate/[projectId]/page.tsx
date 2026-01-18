@@ -1202,22 +1202,27 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                       </div>
                     ) : (
                       <div className='space-y-2'>
-                        {/* 分镜概述显示 */}
-                        {storyboard.storyboard_summary && (
-                          <div className='bg-primary/5 border-primary/20 rounded border p-1.5'>
-                            <p className='text-muted-foreground mb-0.5 text-[10px] font-medium'>
-                              分镜概述
-                            </p>
-                            <p className='text-muted-foreground line-clamp-2 text-xs'>
-                              {storyboard.storyboard_summary}
-                            </p>
-                          </div>
-                        )}
+                        {/* 分镜概述显示 - 始终显示，即使为空 */}
+                        <div className='bg-primary/5 border-primary/20 rounded border p-1.5'>
+                          <p className='text-muted-foreground mb-0.5 text-[10px] font-medium'>
+                            分镜概述
+                            <span className='text-muted-foreground/60 ml-1 text-[9px]'>
+                              (简短描述该分镜的内容和目的)
+                            </span>
+                          </p>
+                          <p className='text-muted-foreground line-clamp-2 text-xs'>
+                            {storyboard.storyboard_summary ||
+                              '暂无概述，点击右侧编辑按钮添加'}
+                          </p>
+                        </div>
                         {/* 文生图提示词显示 */}
                         <div className='flex items-start gap-1'>
                           <div className='flex-1'>
                             <p className='text-muted-foreground mb-0.5 text-[10px]'>
                               文生图提示词
+                              <span className='text-muted-foreground/60 ml-1 text-[9px]'>
+                                (用于生成图片的详细指令)
+                              </span>
                             </p>
                             <p className='text-muted-foreground line-clamp-3 text-xs'>
                               {storyboard.text_to_image || '暂无提示词'}
