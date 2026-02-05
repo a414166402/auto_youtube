@@ -206,6 +206,27 @@ export interface StructuredPromptData {
     character_images: { [key: string]: string };  // 角色标识 -> 图片URL
   }[];
 }
+
+// 主体类型（V2新增）
+export type SubjectType = 'character' | 'object' | 'scene';
+
+// 全局主体（服务端存储，V2新增）
+export interface Subject {
+  id: string;                    // UUID
+  type: SubjectType;             // 主体类型：角色/物品/场景
+  name?: string;                 // 主体名称
+  description?: string | null;   // 主体描述，用于区分同类型的多个主体
+  image_url?: string;            // 主体参考图片URL
+  user_id?: string;              // 用户ID（可选）
+  created_at: string;            // 创建时间
+  updated_at: string;            // 更新时间
+}
+
+// 主体列表响应
+export interface SubjectListResponse {
+  subjects: Subject[];
+  total: number;
+}
 ```
 
 
@@ -541,6 +562,122 @@ POST   /tasks/{task_id}/cancel                     # 取消任务
   "failed_items": 0,
   "created_at": "2025-12-28T10:00:00Z",
   "updated_at": "2025-12-28T10:15:00Z"
+}
+```
+
+### 10. 主体管理接口
+
+```
+GET    /subjects                               # 获取主体列表
+GET    /subjects/{subject_id}                  # 获取单个主体
+POST   /subjects                               # 创建主体
+PUT    /subjects/{subject_id}                  # 更新主体
+DELETE /subjects/{subject_id}                  # 删除主体
+```
+
+#### GET /subjects - 获取主体列表
+**Query Params:** 
+- `type`: 主体类型（character/object/scene），可选
+- `user_id`: 用户ID，可选
+
+**Response:**
+```json
+{
+  "subjects": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "type": "character",
+      "name": "角色A",
+      "description": "紫发女子，穿着白色连衣裙",
+      "image_url": "https://example.com/image.jpg",
+      "user_id": "user123",
+      "created_at": "2026-02-05T10:00:00Z",
+      "updated_at": "2026-02-05T10:00:00Z"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "type": "character",
+      "name": "角色B",
+      "description": null,
+      "image_url": "https://example.com/image2.jpg",
+      "user_id": "user123",
+      "created_at": "2026-02-05T10:00:00Z",
+      "updated_at": "2026-02-05T10:00:00Z"
+    }
+  ],
+  "total": 2
+}
+```
+
+#### GET /subjects/{subject_id} - 获取单个主体
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "character",
+  "name": "角色A",
+  "description": "紫发女子，穿着白色连衣裙",
+  "image_url": "https://example.com/image.jpg",
+  "user_id": "user123",
+  "created_at": "2026-02-05T10:00:00Z",
+  "updated_at": "2026-02-05T10:00:00Z"
+}
+```
+
+#### POST /subjects - 创建主体
+**Request:** multipart/form-data
+- `type`: string (必填) - 主体类型：character/object/scene
+- `name`: string (必填) - 主体名称
+- `description`: string (可选) - 主体描述
+- `user_id`: string (可选) - 用户ID
+- `image`: file (可选) - 主体图片
+
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "character",
+  "name": "角色A",
+  "description": "紫发女子，穿着白色连衣裙",
+  "image_url": "https://example.com/image.jpg",
+  "user_id": "user123",
+  "created_at": "2026-02-05T10:00:00Z",
+  "updated_at": "2026-02-05T10:00:00Z"
+}
+```
+
+#### PUT /subjects/{subject_id} - 更新主体
+**Request:** multipart/form-data
+- `name`: string (可选) - 主体名称
+- `description`: string (可选) - 主体描述（传空字符串可清空）
+- `remove_image`: boolean (可选) - 是否删除图片
+- `image`: file (可选) - 新的主体图片
+
+**说明:**
+- 不传 `description` 字段：保持原值不变
+- 传空字符串 `description=""`：清空描述（设置为 null）
+- 传非空字符串：更新描述
+
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "character",
+  "name": "角色A",
+  "description": "紫发女子，穿着白色连衣裙，手持红色玫瑰",
+  "image_url": "https://example.com/image.jpg",
+  "user_id": "user123",
+  "created_at": "2026-02-05T10:00:00Z",
+  "updated_at": "2026-02-05T10:30:00Z"
+}
+```
+
+#### DELETE /subjects/{subject_id} - 删除主体
+**Response:**
+```json
+{
+  "success": true,
+  "message": "主体已删除"
 }
 ```
 
@@ -1072,6 +1209,22 @@ const projectWithHistory = await getProject(projectId, { full_history: true });
 *For any* 项目详情查询（带full_history=true参数），返回的prompt_history应包含所有历史版本记录。
 **Validates: Requirements 10.2, 10.3**
 
+### Property 21: 主体CRUD一致性
+*For any* 创建的主体，查询该主体应返回相同的数据（包括description字段）；删除后查询应返回404或空结果。
+**Validates: Requirements 11.1, 11.2**
+
+### Property 22: 主体描述更新持久性
+*For any* 主体描述的更新操作，保存后再次查询应返回更新后的值；传递空字符串应将description设置为null；不传递description字段应保持原值不变。
+**Validates: Requirements 11.3, 11.4, 11.5**
+
+### Property 23: 主体描述字符支持
+*For any* 包含UTF-8字符（中文、英文、数字、emoji等）的description字段，保存后查询应返回相同的字符内容。
+**Validates: Requirements 11.6**
+
+### Property 24: 主体列表description字段完整性
+*For any* 主体列表查询，返回的每个主体必须包含description字段（值为string或null）。
+**Validates: Requirements 11.1**
+
 ## Testing Strategy
 
 ### 单元测试
@@ -1081,6 +1234,9 @@ const projectWithHistory = await getProject(projectId, { full_history: true });
 - 进度计算函数测试
 - 409冲突错误处理测试
 - full_history参数传递测试
+- description字段CRUD操作测试
+- description字段UTF-8字符支持测试
+- description字段空值处理测试
 
 ### 集成测试
 - API端点测试（使用mock外部服务）

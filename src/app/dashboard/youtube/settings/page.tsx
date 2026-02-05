@@ -94,10 +94,47 @@ export default function SettingsPage() {
     }
   }, []);
 
+  // 更新主体描述
+  const handleDescriptionChange = useCallback(
+    async (id: string, description: string) => {
+      try {
+        await updateSubject(id, undefined, description);
+
+        // 更新本地状态
+        setLibrary((prev) => {
+          const newLibrary = { ...prev };
+          for (const type of [
+            'character',
+            'object',
+            'scene'
+          ] as SubjectType[]) {
+            newLibrary[type] = prev[type].map((s) =>
+              s.id === id ? { ...s, description: description || null } : s
+            );
+          }
+          return newLibrary;
+        });
+
+        setLastSaved(new Date());
+        toast.success('描述已保存');
+      } catch (error) {
+        toast.error('保存描述失败');
+        console.error('Failed to save description:', error);
+        throw error;
+      }
+    },
+    []
+  );
+
   // 上传主体图片
   const handleImageUpload = useCallback(async (id: string, file: File) => {
     try {
-      const updatedSubject = await updateSubject(id, undefined, file);
+      const updatedSubject = await updateSubject(
+        id,
+        undefined,
+        undefined,
+        file
+      );
 
       // 更新本地状态
       setLibrary((prev) => {
@@ -128,7 +165,7 @@ export default function SettingsPage() {
   // 删除主体图片
   const handleImageRemove = useCallback(async (id: string) => {
     try {
-      await updateSubject(id, undefined, undefined, true);
+      await updateSubject(id, undefined, undefined, undefined, true);
 
       // 更新本地状态
       setLibrary((prev) => {
@@ -159,10 +196,15 @@ export default function SettingsPage() {
 
   // 确认添加主体（从对话框回调）
   const handleConfirmAddSubject = useCallback(
-    async (name: string, image?: File) => {
+    async (name: string, description?: string, image?: File) => {
       const type = addDialogType;
 
-      const newSubject = await createSubject(type, name || undefined, image);
+      const newSubject = await createSubject(
+        type,
+        name || undefined,
+        description,
+        image
+      );
 
       // 更新本地状态
       const globalSubject: GlobalSubject = {
@@ -170,6 +212,7 @@ export default function SettingsPage() {
         type: newSubject.type,
         identifier: '', // 不再使用 identifier
         name: newSubject.name || '',
+        description: newSubject.description,
         imageData: newSubject.image_url,
         image_url: newSubject.image_url
       };
@@ -379,6 +422,7 @@ export default function SettingsPage() {
                       subject={subject}
                       isLoading={isSaving}
                       onNameChange={handleNameChange}
+                      onDescriptionChange={handleDescriptionChange}
                       onImageUpload={handleImageUpload}
                       onImageRemove={handleImageRemove}
                       onDelete={handleDeleteSubject}
@@ -399,6 +443,7 @@ export default function SettingsPage() {
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         type={addDialogType}
+        existingCount={library[addDialogType].length}
         onConfirm={handleConfirmAddSubject}
       />
     </div>

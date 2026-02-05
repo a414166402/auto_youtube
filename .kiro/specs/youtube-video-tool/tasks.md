@@ -399,6 +399,63 @@
   - 确保full_history参数正确传递
   - 如有问题请询问用户
 
+- [x] 20. 主体描述字段功能实现
+  - [x] 20.1 更新TypeScript类型定义
+    - 更新 `src/types/youtube.ts` 中的 Subject 接口
+    - 添加 description 字段（string | null）
+    - 更新 CreateSubjectFields 和 UpdateSubjectFields 接口
+    - _Requirements: 11.1, 11.2, 11.3_
+
+  - [x] 20.2 更新API客户端函数
+    - 更新 `src/lib/api/youtube.ts` 中的 createSubject 函数
+    - 支持传递 description 参数
+    - 更新 updateSubject 函数支持 description 参数
+    - 处理空字符串清空描述的逻辑
+    - _Requirements: 11.2, 11.3, 11.4, 11.5_
+
+  - [x] 20.3 更新 subject-config.ts 辅助函数
+    - 更新 `src/lib/subject-config.ts` 中的类型定义
+    - 在 GlobalSubject 接口中添加 description 字段
+    - 更新 subjectToGlobalSubject 转换函数
+    - _Requirements: 11.1_
+
+  - [x] 20.4 更新 GlobalSubjectCard 组件
+    - 更新 `src/components/youtube/global-subject-card.tsx`
+    - 在卡片上显示 description 字段
+    - 添加编辑 description 的输入框
+    - 当 description 为 null 时显示"暂无描述"
+    - _Requirements: 11.8, 11.9_
+
+  - [x] 20.5 更新 AddSubjectDialog 组件
+    - 更新 `src/components/youtube/add-subject-dialog.tsx`
+    - 添加 description 输入框（可选）
+    - 添加输入提示和字符限制（建议50字符）
+    - 当创建第2个同类型主体时显示提示信息
+    - _Requirements: 11.2, 11.7_
+
+  - [x] 20.6 更新 Settings 页面
+    - 更新 `src/app/dashboard/youtube/settings/page.tsx`
+    - 处理 description 字段的创建和更新
+    - 实现创建第2个主体时的提示逻辑
+    - _Requirements: 11.7_
+
+  - [ ]* 20.7 编写 description 字段单元测试
+    - 测试 description 字段的 CRUD 操作
+    - 测试空字符串清空描述
+    - 测试不传递 description 保持原值
+    - 测试 UTF-8 字符支持（中文、emoji等）
+    - **Property 21: 主体CRUD一致性**
+    - **Property 22: 主体描述更新持久性**
+    - **Property 23: 主体描述字符支持**
+    - **Property 24: 主体列表description字段完整性**
+    - **Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5, 11.6**
+
+- [-] 21. Checkpoint - description 字段功能验证
+  - 确保 description 字段在所有主体类型中正常显示
+  - 确保创建、更新、清空描述功能正常
+  - 确保第2个主体创建时显示提示
+  - 如有问题请询问用户
+
 ## Notes
 
 - 标记为 `*` 的任务为可选任务（主要是测试任务），可根据需要跳过以加快MVP开发

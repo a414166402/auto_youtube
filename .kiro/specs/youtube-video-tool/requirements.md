@@ -13,6 +13,9 @@ YouTube AI视频制作工具模块，用于辅助用户从对标爆款YouTube视
 - **Text_To_Image_Prompt**: 文生图提示词，用于文生图或图文生图接口的文本提示词
 - **Image_To_Video_Prompt**: 图生视频提示词，用于从图片生成视频的文本提示词
 - **Character_Reference**: 角色引用，在提示词编辑页面管理，作为图文生图接口的传入图片
+- **Subject**: 主体，包括角色（Character）、物品（Object）、场景（Scene）三种类型
+- **Subject_Description**: 主体描述，用于区分同类型的多个主体的简短文本说明
+- **Global_Subject_Library**: 全局主体库，存储所有主体的参考图和描述信息，所有项目共享
 - **Gemini_API**: Google的Gemini AI接口，用于解析视频并生成提示词
 - **Grok_Imagine_API**: Grok的图生视频接口，用于批量生成视频
 - **Generation_Result**: 生成结果，包含单次生成的图片或视频及其元数据
@@ -152,4 +155,20 @@ YouTube AI视频制作工具模块，用于辅助用户从对标爆款YouTube视
 3. WHEN 用户点击"查看全部历史" THEN THE Project_Viewer SHALL 调用API并传入full_history=true参数
 4. THE Prompt_History_Viewer SHALL 显示每个历史版本的时间戳和修改类型
 5. WHEN 用户选择历史版本 THEN THE Prompt_History_Viewer SHALL 显示该版本的完整提示词内容
+
+### Requirement 11: 主体描述字段管理
+
+**User Story:** As a 视频创作者, I want to 为主体添加描述信息, so that I can 在多个同类型主体时进行区分。
+
+#### Acceptance Criteria
+
+1. WHEN 用户查询主体列表 THEN THE Subject_Manager SHALL 返回每个主体的description字段（可为null）
+2. WHEN 用户创建主体 THEN THE Subject_Manager SHALL 允许可选地输入description字段
+3. WHEN 用户更新主体 THEN THE Subject_Manager SHALL 允许修改或清空description字段
+4. WHEN 用户传递空字符串作为description THEN THE Subject_Manager SHALL 将description设置为null
+5. WHEN 用户不传递description字段 THEN THE Subject_Manager SHALL 保持原有description值不变
+6. THE Subject_Manager SHALL 支持description字段包含所有UTF-8字符（中文、英文、数字、emoji等）
+7. WHEN 用户创建第2个同类型主体时 THEN THE Subject_UI SHALL 提示用户填写描述以区分多个主体
+8. THE Subject_UI SHALL 在主体卡片上显示description字段内容（如果存在）
+9. WHEN description为null THEN THE Subject_UI SHALL 显示"暂无描述"或类似提示
 

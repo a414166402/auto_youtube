@@ -821,16 +821,19 @@ export async function getSubjects(
  * POST /api/youtube/subjects
  * @param type 主体类型
  * @param name 名称（可选）
+ * @param description 描述（可选）
  * @param image 图片文件（可选）
  */
 export async function createSubject(
   type: SubjectType,
   name?: string,
+  description?: string,
   image?: File
 ): Promise<Subject> {
   const formData = new FormData();
   formData.append('type', type);
   if (name) formData.append('name', name);
+  if (description) formData.append('description', description);
   if (image) {
     if (!validateImageSize(image)) {
       throw new Error(`图片大小不能超过 ${getMaxImageSizeText()}`);
@@ -845,17 +848,23 @@ export async function createSubject(
  * PUT /api/youtube/subjects/{id}
  * @param id 主体UUID
  * @param name 名称（可选）
+ * @param description 描述（可选，传空字符串可清空）
  * @param image 新图片文件（可选）
  * @param removeImage 是否删除图片
  */
 export async function updateSubject(
   id: string,
   name?: string,
+  description?: string,
   image?: File,
   removeImage?: boolean
 ): Promise<Subject> {
   const formData = new FormData();
   if (name !== undefined) formData.append('name', name);
+  if (description !== undefined) {
+    // 传空字符串表示清空描述
+    formData.append('description', description);
+  }
   if (removeImage) formData.append('remove_image', 'true');
   if (image) {
     if (!validateImageSize(image)) {

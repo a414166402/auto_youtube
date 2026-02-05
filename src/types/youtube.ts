@@ -397,6 +397,7 @@ export interface Subject {
   type: SubjectType;
   identifier?: string; // 已废弃，保留兼容
   name?: string;
+  description?: string | null; // 主体描述，用于区分同类型的多个主体
   image_url?: string;
   created_at: string;
   updated_at: string;
@@ -412,12 +413,14 @@ export interface SubjectListResponse {
 export interface CreateSubjectFields {
   type: SubjectType;
   name?: string;
+  description?: string; // 主体描述（可选）
   // image 通过 FormData 传递
 }
 
 // 更新主体请求（FormData，这里定义字段）
 export interface UpdateSubjectFields {
   name?: string;
+  description?: string; // 主体描述（可选，传空字符串可清空）
   remove_image?: boolean;
   // image 通过 FormData 传递
 }

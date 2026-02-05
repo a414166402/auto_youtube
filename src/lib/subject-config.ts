@@ -32,6 +32,7 @@ export interface GlobalSubject {
   type: SubjectType;
   identifier: string; // 已废弃，保留兼容
   name: string;
+  description?: string | null; // 主体描述
   imageData?: string; // 兼容旧代码，实际使用 image_url
   image_url?: string; // 新字段
 }
@@ -69,6 +70,7 @@ export function subjectToGlobalSubject(subject: Subject): GlobalSubject {
     type: subject.type,
     identifier: subject.identifier || '', // 兼容旧数据
     name: subject.name || '',
+    description: subject.description, // 添加描述字段
     imageData: subject.image_url, // 兼容旧代码
     image_url: subject.image_url
   };

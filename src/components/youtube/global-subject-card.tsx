@@ -19,6 +19,7 @@ interface GlobalSubjectCardProps {
   subject: GlobalSubject;
   isLoading?: boolean;
   onNameChange: (id: string, name: string) => Promise<void>;
+  onDescriptionChange: (id: string, description: string) => Promise<void>;
   onImageUpload: (id: string, file: File) => Promise<void>;
   onImageRemove: (id: string) => void;
   onDelete: (id: string) => void;
@@ -28,6 +29,7 @@ export function GlobalSubjectCard({
   subject,
   isLoading = false,
   onNameChange,
+  onDescriptionChange,
   onImageUpload,
   onImageRemove,
   onDelete
@@ -36,7 +38,12 @@ export function GlobalSubjectCard({
   const [isUploading, setIsUploading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(subject.name);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editDescription, setEditDescription] = useState(
+    subject.description || ''
+  );
   const [isSavingName, setIsSavingName] = useState(false);
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
   const { toast } = useToast();
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,10 +116,42 @@ export function GlobalSubjectCard({
     }
   };
 
+  // 进入描述编辑模式
+  const handleStartEditDescription = () => {
+    setEditDescription(subject.description || '');
+    setIsEditingDescription(true);
+  };
+
+  // 保存描述编辑
+  const handleSaveDescription = async () => {
+    const trimmedDescription = editDescription.trim();
+
+    // 如果描述没有变化，直接退出编辑模式
+    if (trimmedDescription === (subject.description || '')) {
+      setIsEditingDescription(false);
+      return;
+    }
+
+    setIsSavingDescription(true);
+    try {
+      await onDescriptionChange(subject.id, trimmedDescription);
+      setIsEditingDescription(false);
+    } catch (error) {
+      toast({
+        title: '保存失败',
+        description: error instanceof Error ? error.message : '描述保存失败',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSavingDescription(false);
+    }
+  };
+
   const typeLabel = SUBJECT_TYPE_LABELS[subject.type];
   const typeIcon = SUBJECT_TYPE_ICONS[subject.type];
   const imageUrl = getSubjectImageUrl(subject);
-  const isDisabled = isLoading || isUploading || isSavingName;
+  const isDisabled =
+    isLoading || isUploading || isSavingName || isSavingDescription;
   const displayName = subject.name || '未命名';
 
   return (
@@ -189,6 +228,57 @@ export function GlobalSubjectCard({
                 variant='outline'
                 size='sm'
                 onClick={handleStartEdit}
+                disabled={isDisabled}
+                className='h-8 gap-1'
+              >
+                <Pencil className='h-3 w-3' />
+                编辑
+              </Button>
+            </>
+          )}
+        </div>
+
+        {/* 描述编辑区域 */}
+        <div className='flex items-center gap-2'>
+          {isEditingDescription ? (
+            <>
+              <Input
+                placeholder={`${typeLabel}描述（可选，建议50字符内）`}
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                className='h-8 flex-1 text-sm'
+                disabled={isSavingDescription}
+                autoFocus
+                maxLength={100}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveDescription();
+                  if (e.key === 'Escape') setIsEditingDescription(false);
+                }}
+              />
+              <Button
+                variant='default'
+                size='sm'
+                onClick={handleSaveDescription}
+                disabled={isSavingDescription}
+                className='h-8 gap-1'
+              >
+                {isSavingDescription ? (
+                  <Loader2 className='h-3 w-3 animate-spin' />
+                ) : (
+                  <Save className='h-3 w-3' />
+                )}
+                保存
+              </Button>
+            </>
+          ) : (
+            <>
+              <span className='text-muted-foreground flex-1 truncate text-sm'>
+                {subject.description || '暂无描述'}
+              </span>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={handleStartEditDescription}
                 disabled={isDisabled}
                 className='h-8 gap-1'
               >

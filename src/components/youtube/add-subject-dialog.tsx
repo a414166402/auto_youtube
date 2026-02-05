@@ -21,16 +21,23 @@ interface AddSubjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   type: SubjectType;
-  onConfirm: (name: string, image?: File) => Promise<void>;
+  existingCount: number; // 当前类型已有的主体数量
+  onConfirm: (
+    name: string,
+    description?: string,
+    image?: File
+  ) => Promise<void>;
 }
 
 export function AddSubjectDialog({
   open,
   onOpenChange,
   type,
+  existingCount,
   onConfirm
 }: AddSubjectDialogProps) {
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,6 +45,7 @@ export function AddSubjectDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const typeLabel = SUBJECT_TYPE_LABELS[type];
+  const isSecondSubject = existingCount === 1; // 是否是第2个同类型主体
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -69,9 +77,14 @@ export function AddSubjectDialog({
     setIsLoading(true);
     setError(null);
     try {
-      await onConfirm(name.trim(), imageFile || undefined);
+      await onConfirm(
+        name.trim(),
+        description.trim() || undefined,
+        imageFile || undefined
+      );
       // 重置状态
       setName('');
+      setDescription('');
       setImageFile(null);
       setImagePreview(null);
       onOpenChange(false);
@@ -88,6 +101,7 @@ export function AddSubjectDialog({
       if (!newOpen) {
         // 关闭时重置状态
         setName('');
+        setDescription('');
         setImageFile(null);
         setImagePreview(null);
         setError(null);
@@ -106,6 +120,16 @@ export function AddSubjectDialog({
         </DialogHeader>
 
         <div className='space-y-4 py-4'>
+          {/* 第2个主体提示 */}
+          {isSecondSubject && (
+            <div className='bg-muted rounded-lg border p-3'>
+              <p className='text-muted-foreground text-sm'>
+                💡 提示：您正在添加第2个{typeLabel}
+                ，建议填写描述以便区分不同的{typeLabel}
+              </p>
+            </div>
+          )}
+
           {/* 名称输入 */}
           <div className='space-y-2'>
             <Label htmlFor='subject-name'>{typeLabel}名称</Label>
@@ -116,6 +140,24 @@ export function AddSubjectDialog({
               placeholder={`例如：紫发贵妇、金色宝箱、森林场景`}
               disabled={isLoading}
             />
+          </div>
+
+          {/* 描述输入 */}
+          <div className='space-y-2'>
+            <Label htmlFor='subject-description'>
+              {typeLabel}描述（可选，建议50字符内）
+            </Label>
+            <Input
+              id='subject-description'
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={`例如：穿着白色连衣裙、手持红色玫瑰`}
+              disabled={isLoading}
+              maxLength={100}
+            />
+            <p className='text-muted-foreground text-xs'>
+              用于区分同类型的多个{typeLabel}，方便识别和管理
+            </p>
           </div>
 
           {/* 图片上传 */}
