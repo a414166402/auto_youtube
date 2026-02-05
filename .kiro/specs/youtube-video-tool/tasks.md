@@ -450,7 +450,7 @@
     - **Property 24: 主体列表description字段完整性**
     - **Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5, 11.6**
 
-- [-] 21. Checkpoint - description 字段功能验证
+- [x] 21. Checkpoint - description 字段功能验证
   - 确保 description 字段在所有主体类型中正常显示
   - 确保创建、更新、清空描述功能正常
   - 确保第2个主体创建时显示提示
