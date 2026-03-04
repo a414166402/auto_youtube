@@ -64,10 +64,9 @@ import { ConflictDialog } from '@/components/youtube/conflict-dialog';
 import { useConflictHandler } from '@/hooks/use-conflict-handler';
 import { useTaskPolling } from '@/hooks/use-task-polling';
 import {
-  loadTaskIds,
-  saveTaskIds,
-  addTaskId,
-  removeTaskIds
+  loadTaskMetadata,
+  addTaskMetadata,
+  removeTaskMetadata
 } from '@/lib/task-storage';
 import type {
   ProjectResponse,
@@ -112,6 +111,11 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   const [generatingVideoIndices, setGeneratingVideoIndices] = useState<
     Set<number>
   >(new Set());
+
+  // 任务ID到分镜索引的映射（用于任务完成时清除loading状态）
+  const [taskToStoryboardMap, setTaskToStoryboardMap] = useState<
+    Map<string, { type: 'image' | 'video'; index: number }>
+  >(new Map());
 
   // 预览状态
   const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
@@ -167,9 +171,34 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     pollInterval: 3000,
     onTaskUpdate: (task) => {
       console.log('任务更新:', task);
-      // 任务完成或失败时，从localStorage移除
+      // 任务完成或失败时，从localStorage移除并清除loading状态
       if (task.status === 'completed' || task.status === 'failed') {
-        removeTaskIds(projectId, [task.task_id]);
+        removeTaskMetadata(projectId, [task.task_id]);
+
+        // 清除对应的loading状态
+        const taskInfo = taskToStoryboardMap.get(task.task_id);
+        if (taskInfo) {
+          if (taskInfo.type === 'image') {
+            setGeneratingImageIndices((prev) => {
+              const next = new Set(prev);
+              next.delete(taskInfo.index);
+              return next;
+            });
+          } else {
+            setGeneratingVideoIndices((prev) => {
+              const next = new Set(prev);
+              next.delete(taskInfo.index);
+              return next;
+            });
+          }
+          // 清除映射
+          setTaskToStoryboardMap((prev) => {
+            const next = new Map(prev);
+            next.delete(task.task_id);
+            return next;
+          });
+        }
+
         // 重新加载项目数据
         if (task.status === 'completed') {
           loadData();
@@ -222,11 +251,36 @@ export default function GeneratePage({ params }: GeneratePageProps) {
     loadData();
   }, [loadData]);
 
-  // 页面加载时恢复任务轮询
+  // 页面加载时恢复任务轮询和loading状态
   useEffect(() => {
-    const savedTaskIds = loadTaskIds(projectId);
-    if (savedTaskIds.length > 0) {
-      startPolling(savedTaskIds);
+    const savedTasks = loadTaskMetadata(projectId);
+    if (savedTasks.length > 0) {
+      // 恢复 loading 状态
+      const imageIndices = new Set<number>();
+      const videoIndices = new Set<number>();
+      const taskMap = new Map<
+        string,
+        { type: 'image' | 'video'; index: number }
+      >();
+
+      savedTasks.forEach((task) => {
+        if (task.type === 'image') {
+          imageIndices.add(task.storyboardIndex);
+        } else {
+          videoIndices.add(task.storyboardIndex);
+        }
+        taskMap.set(task.taskId, {
+          type: task.type,
+          index: task.storyboardIndex
+        });
+      });
+
+      setGeneratingImageIndices(imageIndices);
+      setGeneratingVideoIndices(videoIndices);
+      setTaskToStoryboardMap(taskMap);
+
+      // 开始轮询
+      startPolling(savedTasks.map((t) => t.taskId));
     }
   }, [projectId, startPolling]);
 
@@ -304,8 +358,18 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         }
       );
 
-      // 保存任务ID到localStorage
-      addTaskId(projectId, taskId);
+      // 保存任务元数据到localStorage
+      addTaskMetadata(projectId, {
+        taskId,
+        type: 'image',
+        storyboardIndex
+      });
+      // 保存任务ID到分镜索引的映射
+      setTaskToStoryboardMap((prev) => {
+        const next = new Map(prev);
+        next.set(taskId, { type: 'image', index: storyboardIndex });
+        return next;
+      });
       // 开始轮询
       startPolling([taskId]);
 
@@ -313,6 +377,8 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         title: '任务已创建',
         description: `分镜 #${storyboardIndex + 1} 图片生成任务已加入队列`
       });
+
+      // 注意：不在这里移除 generatingImageIndices，而是等待任务完成后通过轮询回调移除
     } catch (err) {
       if (handleError(err)) return;
       toast({
@@ -321,8 +387,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
           err instanceof Error ? err.message : '图片生成任务创建失败',
         variant: 'destructive'
       });
-    } finally {
-      // 从生成中集合移除
+      // 只有在创建失败时才移除 loading 状态
       setGeneratingImageIndices((prev) => {
         const next = new Set(prev);
         next.delete(storyboardIndex);
@@ -370,8 +435,18 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         }
       );
 
-      // 保存任务ID到localStorage
-      addTaskId(projectId, taskId);
+      // 保存任务元数据到localStorage
+      addTaskMetadata(projectId, {
+        taskId,
+        type: 'video',
+        storyboardIndex
+      });
+      // 保存任务ID到分镜索引的映射
+      setTaskToStoryboardMap((prev) => {
+        const next = new Map(prev);
+        next.set(taskId, { type: 'video', index: storyboardIndex });
+        return next;
+      });
       // 开始轮询
       startPolling([taskId]);
 
@@ -379,6 +454,8 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         title: '任务已创建',
         description: `分镜 #${storyboardIndex + 1} 视频生成任务已加入队列`
       });
+
+      // 注意：不在这里移除 generatingVideoIndices，而是等待任务完成后通过轮询回调移除
     } catch (err) {
       if (handleError(err)) return;
       toast({
@@ -387,8 +464,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
           err instanceof Error ? err.message : '视频生成任务创建失败',
         variant: 'destructive'
       });
-    } finally {
-      // 从生成中集合移除
+      // 只有在创建失败时才移除 loading 状态
       setGeneratingVideoIndices((prev) => {
         const next = new Set(prev);
         next.delete(storyboardIndex);
