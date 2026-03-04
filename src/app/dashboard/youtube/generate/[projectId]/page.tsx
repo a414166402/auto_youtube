@@ -161,6 +161,38 @@ export default function GeneratePage({ params }: GeneratePageProps) {
 
   // 注意：分镜参考选择现在存储在 storyboard.ref_storyboard_indexes 中，不再使用本地状态
 
+  // 增量更新单个分镜数据（避免全量刷新）
+  const updateStoryboardData = useCallback(
+    async (storyboardIndex: number) => {
+      try {
+        // 重新获取项目数据
+        const projectData = await getProject(projectId);
+
+        // 只更新受影响的分镜
+        setProject((prev) => {
+          if (!prev) return projectData;
+
+          const newStoryboards = [...prev.data.storyboards];
+          newStoryboards[storyboardIndex] =
+            projectData.data.storyboards[storyboardIndex];
+
+          return {
+            ...prev,
+            data: {
+              ...prev.data,
+              storyboards: newStoryboards
+            }
+          };
+        });
+      } catch (err) {
+        console.error('更新分镜数据失败:', err);
+        // 失败时回退到全量加载
+        loadData();
+      }
+    },
+    [projectId]
+  );
+
   // 任务轮询
   const {
     isPolling,
@@ -197,11 +229,11 @@ export default function GeneratePage({ params }: GeneratePageProps) {
             next.delete(task.task_id);
             return next;
           });
-        }
 
-        // 重新加载项目数据
-        if (task.status === 'completed') {
-          loadData();
+          // 任务完成时，只更新对应的分镜数据（增量更新）
+          if (task.status === 'completed') {
+            updateStoryboardData(taskInfo.index);
+          }
         }
       }
     },
@@ -210,7 +242,8 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         title: '任务完成',
         description: `成功: ${completed.length}, 失败: ${failed.length}`
       });
-      loadData();
+      // 批量完成时也使用增量更新
+      // 不再调用 loadData()
     },
     onError: (error) => {
       console.error('轮询错误:', error);
