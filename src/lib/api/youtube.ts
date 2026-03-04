@@ -334,126 +334,243 @@ export async function generatePrompts(
   );
 }
 
-// ============ 图片生成 API ============
+// ============ 异步任务队列 API ============
 
 /**
- * 生成单个分镜图片
- * POST /api/youtube/projects/{project_id}/generate/image
- * 根据 character_images 判断生成类型（text_to_image 或 image_text_to_image）
- * 支持多张角色参考图片
+ * 任务状态类型
  */
-export async function generateImage(
+export type TaskStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+/**
+ * 任务信息接口
+ */
+export interface TaskInfo {
+  task_id: string;
+  module_name: string;
+  task_type: string;
+  status: TaskStatus;
+  progress: number;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  has_result: boolean;
+}
+
+/**
+ * 批量任务状态查询响应
+ */
+export interface BatchTaskStatusResponse {
+  success: boolean;
+  tasks: TaskInfo[];
+  not_found: string[];
+}
+
+/**
+ * 创建图片生成任务
+ * POST /api/tasks/create
+ */
+export async function createImageTask(
   projectId: string,
-  data: GenerateImageRequest
-): Promise<GenerateImageResponse> {
-  if (USE_MOCK_DATA) {
-    return {
-      success: true,
-      storyboard_index: data.storyboard_index,
-      image: {
-        url: `https://picsum.photos/seed/${Date.now()}/512/512`,
-        generation_type: data.character_images?.length
-          ? 'image_text_to_image'
-          : 'text_to_image'
-      },
-      image_index: 0
-    };
-  }
-  return fetchApi<GenerateImageResponse>(
-    `/projects/${projectId}/generate/image`,
-    {
-      method: 'POST',
-      body: JSON.stringify(data)
+  storyboardIndex: number,
+  prompt: string,
+  options: {
+    characterImages?: string[];
+    aspectRatio?: string;
+    aiChannel?: string;
+    subjectMappings?: Record<string, string>;
+    refIndexes?: number[];
+  } = {}
+): Promise<string> {
+  const response = await fetch('/api/tasks/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      module_name: 'image_generation',
+      task_type: 'generate_storyboard_image',
+      execution_mode: 'sequential',
+      data: {
+        project_id: projectId,
+        storyboard_index: storyboardIndex,
+        prompt: prompt,
+        character_images: options.characterImages || [],
+        aspect_ratio: options.aspectRatio || '9:16',
+        ai_channel: options.aiChannel || 'business',
+        subject_mappings: options.subjectMappings || {},
+        ref_storyboard_indexes: options.refIndexes || []
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ detail: '任务创建失败' }));
+
+    // 409错误特殊处理
+    if (response.status === 409) {
+      throw new ConflictError('模块正在执行任务，请稍后重试', error.detail);
     }
+
+    throw new Error(error.detail || '任务创建失败');
+  }
+
+  const result = await response.json();
+  return result.task_id;
+}
+
+/**
+ * 创建视频生成任务
+ * POST /api/tasks/create
+ */
+export async function createVideoTask(
+  projectId: string,
+  storyboardIndex: number,
+  imageData: string,
+  prompt: string,
+  options: {
+    subjectMappings?: Record<string, string>;
+    sourceImageIndex?: number;
+  } = {}
+): Promise<string> {
+  const response = await fetch('/api/tasks/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      module_name: 'video_generation',
+      task_type: 'generate_storyboard_video',
+      execution_mode: 'sequential',
+      data: {
+        project_id: projectId,
+        storyboard_index: storyboardIndex,
+        image_data: imageData,
+        prompt: prompt,
+        subject_mappings: options.subjectMappings || {},
+        source_image_index: options.sourceImageIndex
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ detail: '任务创建失败' }));
+
+    // 409错误特殊处理
+    if (response.status === 409) {
+      throw new ConflictError('模块正在执行任务，请稍后重试', error.detail);
+    }
+
+    throw new Error(error.detail || '任务创建失败');
+  }
+
+  const result = await response.json();
+  return result.task_id;
+}
+
+/**
+ * 批量查询任务状态
+ * POST /api/tasks/batch-status
+ */
+export async function getBatchTaskStatus(
+  taskIds: string[]
+): Promise<BatchTaskStatusResponse> {
+  if (taskIds.length === 0) {
+    return { success: true, tasks: [], not_found: [] };
+  }
+
+  if (taskIds.length > 100) {
+    throw new Error('批量查询最多支持100个任务');
+  }
+
+  const response = await fetch('/api/tasks/batch-status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_ids: taskIds })
+  });
+
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ error: '批量查询失败' }));
+    throw new Error(error.error || '批量查询失败');
+  }
+
+  return response.json();
+}
+
+/**
+ * 获取项目的所有生成任务
+ * GET /api/youtube/projects/{project_id}/generation-tasks
+ */
+export async function getProjectTasks(
+  projectId: string,
+  params?: {
+    taskType?: string;
+    status?: TaskStatus;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{
+  project_id: string;
+  tasks: TaskInfo[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  const searchParams = new URLSearchParams();
+  if (params?.taskType) searchParams.set('task_type', params.taskType);
+  if (params?.status) searchParams.set('status', params.status);
+  if (params?.limit) searchParams.set('limit', params.limit.toString());
+  if (params?.offset) searchParams.set('offset', params.offset.toString());
+
+  const query = searchParams.toString();
+  return fetchApi(
+    `/projects/${projectId}/generation-tasks${query ? `?${query}` : ''}`
   );
 }
 
 /**
- * 批量生成所有分镜图片
- * @param characterImages 角色参考图片数组（支持base64或URL）
+ * 查询模块状态
+ * GET /api/tasks/modules/{module_name}/status
  */
-export async function generateAllImages(
-  projectId: string,
-  storyboardIndices: number[],
-  characterImages?: string[]
-): Promise<GenerateImageResponse[]> {
-  const results: GenerateImageResponse[] = [];
+export async function getModuleStatus(
+  moduleName: 'image_generation' | 'video_generation'
+): Promise<{
+  status: string;
+  queue_processing: boolean;
+  queue_size: number;
+  message: string;
+  module_name: string;
+  total_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  pending_tasks: number;
+  running_tasks: number;
+  completion_percentage: number;
+  automation_info: {
+    is_busy: boolean;
+    can_add_new_tasks: boolean;
+    auto_reset_enabled: boolean;
+  };
+}> {
+  const response = await fetch(`/api/tasks/modules/${moduleName}/status`);
 
-  for (const index of storyboardIndices) {
-    try {
-      const result = await generateImage(projectId, {
-        storyboard_index: index,
-        character_images: characterImages
-      });
-      results.push(result);
-    } catch (error) {
-      results.push({
-        success: false,
-        storyboard_index: index,
-        error: error instanceof Error ? error.message : '生成失败'
-      });
-    }
+  if (!response.ok) {
+    throw new Error('查询模块状态失败');
   }
 
-  return results;
+  return response.json();
 }
 
-// ============ 视频生成 API ============
+// ============ 视频生成 API（已废弃 - 使用异步任务接口）============
 
-/**
- * 生成单个分镜视频
- * POST /api/youtube/projects/{project_id}/generate/video
- */
-export async function generateVideo(
-  projectId: string,
-  data: GenerateVideoRequest
-): Promise<GenerateVideoResponse> {
-  if (USE_MOCK_DATA) {
-    return {
-      success: true,
-      storyboard_index: data.storyboard_index,
-      video: {
-        url: `https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4`,
-        source_image_index: 0
-      },
-      video_index: 0
-    };
-  }
-  return fetchApi<GenerateVideoResponse>(
-    `/projects/${projectId}/generate/video`,
-    {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }
-  );
-}
-
-/**
- * 批量生成所有分镜视频
- */
-export async function generateAllVideos(
-  projectId: string,
-  storyboardIndices: number[]
-): Promise<GenerateVideoResponse[]> {
-  const results: GenerateVideoResponse[] = [];
-
-  for (const index of storyboardIndices) {
-    try {
-      const result = await generateVideo(projectId, {
-        storyboard_index: index
-      });
-      results.push(result);
-    } catch (error) {
-      results.push({
-        success: false,
-        storyboard_index: index,
-        error: error instanceof Error ? error.message : '生成失败'
-      });
-    }
-  }
-
-  return results;
-}
+// 注意：以下同步接口已废弃，请使用 createVideoTask() 异步接口
 
 // ============ 分镜管理 API ============
 

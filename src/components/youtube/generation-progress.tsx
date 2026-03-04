@@ -4,7 +4,6 @@ import { useMemo } from 'react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import type { GenerationTask } from '@/types/youtube';
-import { calculateTaskProgress } from '@/hooks/use-task-polling';
 import {
   CheckCircle2,
   XCircle,
@@ -77,7 +76,11 @@ export function GenerationProgress({
   className,
   height = 'md'
 }: GenerationProgressProps) {
-  const progress = useMemo(() => calculateTaskProgress(task), [task]);
+  // 计算进度百分比
+  const progress = useMemo(() => {
+    if (!task || task.total_items === 0) return 0;
+    return Math.round((task.completed_items / task.total_items) * 100);
+  }, [task]);
 
   const config = task ? statusConfig[task.status] : null;
   const StatusIcon = config?.icon;

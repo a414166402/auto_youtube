@@ -1,212 +1,256 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
-import type { TaskStatus } from '@/types/youtube';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { getBatchTaskStatus, type TaskInfo } from '@/lib/api/youtube';
 
-/**
- * 简化的任务状态接口
- * 由于后端不支持任务轮询API，此接口用于前端本地状态管理
- */
-export interface LocalTaskState {
-  id: string;
-  status: TaskStatus;
-  progress: number;
-  total_items: number;
-  completed_items: number;
-  failed_items: number;
-  error_message?: string;
+export interface UseTaskPollingOptions {
+  /** 轮询间隔(毫秒) */
+  pollInterval?: number;
+  /** 最大轮询次数 */
+  maxAttempts?: number;
+  /** 单个任务更新回调 */
+  onTaskUpdate?: (task: TaskInfo) => void;
+  /** 所有任务完成回调 */
+  onAllComplete?: (result: {
+    completed: TaskInfo[];
+    failed: TaskInfo[];
+  }) => void;
+  /** 错误回调 */
+  onError?: (error: Error) => void;
 }
 
-export interface UseLocalTaskStateOptions {
-  /** 任务完成回调 */
-  onComplete?: (task: LocalTaskState) => void;
-  /** 任务失败回调 */
-  onFailed?: (task: LocalTaskState) => void;
-  /** 任务状态变化回调 */
-  onStatusChange?: (
-    task: LocalTaskState,
-    prevStatus: TaskStatus | null
-  ) => void;
-}
-
-export interface UseLocalTaskStateReturn {
-  /** 当前任务数据 */
-  task: LocalTaskState | null;
-  /** 是否正在执行 */
-  isRunning: boolean;
-  /** 错误信息 */
-  error: Error | null;
-  /** 开始任务 */
-  startTask: (taskId: string, totalItems: number) => void;
-  /** 更新进度 */
-  updateProgress: (completedItems: number, failedItems?: number) => void;
-  /** 完成任务 */
-  completeTask: () => void;
-  /** 任务失败 */
-  failTask: (errorMessage: string) => void;
-  /** 重置任务 */
-  resetTask: () => void;
+export interface UseTaskPollingReturn {
+  /** 是否正在轮询 */
+  isPolling: boolean;
+  /** 任务状态映射 */
+  tasks: Map<string, TaskInfo>;
+  /** 开始轮询 */
+  startPolling: (taskIds: string[]) => void;
+  /** 停止轮询 */
+  stopPolling: () => void;
+  /** 暂停轮询 */
+  pausePolling: () => void;
+  /** 恢复轮询 */
+  resumePolling: () => void;
+  /** 是否暂停 */
+  isPaused: boolean;
 }
 
 /**
- * 本地任务状态管理 Hook
- * 用于管理前端生成任务的状态（图片生成、视频生成等）
+ * 异步任务批量轮询 Hook
+ * 基于批量状态查询接口实现高效轮询
  */
-export function useLocalTaskState(
-  options: UseLocalTaskStateOptions = {}
-): UseLocalTaskStateReturn {
-  const { onComplete, onFailed, onStatusChange } = options;
+export function useTaskPolling(
+  options: UseTaskPollingOptions = {}
+): UseTaskPollingReturn {
+  const {
+    pollInterval = 3000,
+    maxAttempts = 100,
+    onTaskUpdate,
+    onAllComplete,
+    onError
+  } = options;
 
-  const [task, setTask] = useState<LocalTaskState | null>(null);
-  const [error, setError] = useState<Error | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [tasks, setTasks] = useState<Map<string, TaskInfo>>(new Map());
 
-  const prevStatusRef = useRef<TaskStatus | null>(null);
-  const callbacksRef = useRef({ onComplete, onFailed, onStatusChange });
-  callbacksRef.current = { onComplete, onFailed, onStatusChange };
+  const pendingTaskIdsRef = useRef<string[]>([]);
+  const attemptCountRef = useRef(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const callbacksRef = useRef({ onTaskUpdate, onAllComplete, onError });
 
-  const isRunning = task?.status === 'running' || task?.status === 'pending';
+  // 更新回调引用
+  callbacksRef.current = { onTaskUpdate, onAllComplete, onError };
 
-  // 开始任务
-  const startTask = useCallback((taskId: string, totalItems: number) => {
-    const newTask: LocalTaskState = {
-      id: taskId,
-      status: 'running',
-      progress: 0,
-      total_items: totalItems,
-      completed_items: 0,
-      failed_items: 0
-    };
-
-    setTask(newTask);
-    setError(null);
-
-    if (prevStatusRef.current !== 'running') {
-      callbacksRef.current.onStatusChange?.(newTask, prevStatusRef.current);
-      prevStatusRef.current = 'running';
+  // 清理定时器
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
   }, []);
 
-  // 更新进度
-  const updateProgress = useCallback(
-    (completedItems: number, failedItems: number = 0) => {
-      setTask((prev) => {
-        if (!prev) return prev;
+  // 轮询逻辑
+  const poll = useCallback(async () => {
+    if (isPaused || pendingTaskIdsRef.current.length === 0) {
+      return;
+    }
 
-        const progress =
-          prev.total_items > 0
-            ? Math.round((completedItems / prev.total_items) * 100)
-            : 0;
+    try {
+      // 批量查询任务状态
+      const result = await getBatchTaskStatus(pendingTaskIdsRef.current);
 
-        return {
-          ...prev,
-          completed_items: completedItems,
-          failed_items: failedItems,
-          progress
-        };
+      const stillPending: string[] = [];
+      const completedTasks: TaskInfo[] = [];
+      const failedTasks: TaskInfo[] = [];
+
+      // 更新任务状态
+      setTasks((prev) => {
+        const newTasks = new Map(prev);
+
+        for (const task of result.tasks) {
+          newTasks.set(task.task_id, task);
+
+          // 触发单个任务更新回调
+          callbacksRef.current.onTaskUpdate?.(task);
+
+          // 分类任务
+          if (task.status === 'completed') {
+            completedTasks.push(task);
+          } else if (task.status === 'failed') {
+            failedTasks.push(task);
+          } else if (task.status === 'pending' || task.status === 'running') {
+            stillPending.push(task.task_id);
+          }
+        }
+
+        return newTasks;
       });
+
+      // 更新待轮询任务列表
+      pendingTaskIdsRef.current = stillPending;
+
+      // 检查是否所有任务都已完成
+      if (stillPending.length === 0) {
+        setIsPolling(false);
+        callbacksRef.current.onAllComplete?.({
+          completed: completedTasks,
+          failed: failedTasks
+        });
+        return;
+      }
+
+      // 检查超时
+      attemptCountRef.current++;
+      if (attemptCountRef.current >= maxAttempts) {
+        setIsPolling(false);
+        callbacksRef.current.onError?.(
+          new Error(`轮询超时，还有 ${stillPending.length} 个任务未完成`)
+        );
+        return;
+      }
+
+      // 继续轮询
+      timerRef.current = setTimeout(poll, pollInterval);
+    } catch (error) {
+      callbacksRef.current.onError?.(
+        error instanceof Error ? error : new Error('轮询失败')
+      );
+      // 出错后继续轮询
+      timerRef.current = setTimeout(poll, pollInterval);
+    }
+  }, [isPaused, pollInterval, maxAttempts]);
+
+  // 开始轮询
+  const startPolling = useCallback(
+    (taskIds: string[]) => {
+      if (taskIds.length === 0) return;
+
+      clearTimer();
+      pendingTaskIdsRef.current = [...taskIds];
+      attemptCountRef.current = 0;
+      setIsPolling(true);
+      setIsPaused(false);
+
+      // 初始化任务状态
+      setTasks((prev) => {
+        const newTasks = new Map(prev);
+        for (const taskId of taskIds) {
+          if (!newTasks.has(taskId)) {
+            newTasks.set(taskId, {
+              task_id: taskId,
+              module_name: '',
+              task_type: '',
+              status: 'pending',
+              progress: 0,
+              created_at: new Date().toISOString(),
+              started_at: null,
+              completed_at: null,
+              error_message: null,
+              has_result: false
+            });
+          }
+        }
+        return newTasks;
+      });
+
+      // 立即开始第一次轮询
+      poll();
     },
-    []
+    [clearTimer, poll]
   );
 
-  // 完成任务
-  const completeTask = useCallback(() => {
-    setTask((prev) => {
-      if (!prev) return prev;
+  // 停止轮询
+  const stopPolling = useCallback(() => {
+    clearTimer();
+    setIsPolling(false);
+    setIsPaused(false);
+    pendingTaskIdsRef.current = [];
+    attemptCountRef.current = 0;
+  }, [clearTimer]);
 
-      const completedTask: LocalTaskState = {
-        ...prev,
-        status: 'completed',
-        progress: 100,
-        completed_items: prev.total_items
-      };
+  // 暂停轮询
+  const pausePolling = useCallback(() => {
+    clearTimer();
+    setIsPaused(true);
+  }, [clearTimer]);
 
-      callbacksRef.current.onComplete?.(completedTask);
-      callbacksRef.current.onStatusChange?.(
-        completedTask,
-        prevStatusRef.current
-      );
-      prevStatusRef.current = 'completed';
+  // 恢复轮询
+  const resumePolling = useCallback(() => {
+    if (!isPolling) return;
+    setIsPaused(false);
+    poll();
+  }, [isPolling, poll]);
 
-      return completedTask;
-    });
-  }, []);
-
-  // 任务失败
-  const failTask = useCallback((errorMessage: string) => {
-    setTask((prev) => {
-      if (!prev) return prev;
-
-      const failedTask: LocalTaskState = {
-        ...prev,
-        status: 'failed',
-        error_message: errorMessage
-      };
-
-      setError(new Error(errorMessage));
-      callbacksRef.current.onFailed?.(failedTask);
-      callbacksRef.current.onStatusChange?.(failedTask, prevStatusRef.current);
-      prevStatusRef.current = 'failed';
-
-      return failedTask;
-    });
-  }, []);
-
-  // 重置任务
-  const resetTask = useCallback(() => {
-    setTask(null);
-    setError(null);
-    prevStatusRef.current = null;
-  }, []);
+  // 组件卸载时清理
+  useEffect(() => {
+    return () => {
+      clearTimer();
+    };
+  }, [clearTimer]);
 
   return {
-    task,
-    isRunning,
-    error,
-    startTask,
-    updateProgress,
-    completeTask,
-    failTask,
-    resetTask
+    isPolling,
+    tasks,
+    startPolling,
+    stopPolling,
+    pausePolling,
+    resumePolling,
+    isPaused
   };
 }
 
 /**
  * 计算任务进度百分比
  */
-export function calculateTaskProgress(task: LocalTaskState | null): number {
-  if (!task || task.total_items === 0) return 0;
-  return Math.round((task.completed_items / task.total_items) * 100);
+export function calculateTaskProgress(tasks: Map<string, TaskInfo>): number {
+  if (tasks.size === 0) return 0;
+
+  const completed = Array.from(tasks.values()).filter(
+    (t) => t.status === 'completed'
+  ).length;
+
+  return Math.round((completed / tasks.size) * 100);
 }
 
 /**
- * 检查任务是否处于终止状态
+ * 获取任务统计信息
  */
-export function isTaskTerminal(status: TaskStatus): boolean {
-  return (
-    status === 'completed' || status === 'failed' || status === 'cancelled'
-  );
-}
+export function getTaskStats(tasks: Map<string, TaskInfo>): {
+  total: number;
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+} {
+  const taskArray = Array.from(tasks.values());
 
-/**
- * 检查任务是否可以暂停
- */
-export function canPauseTask(status: TaskStatus): boolean {
-  return status === 'running' || status === 'pending';
+  return {
+    total: taskArray.length,
+    pending: taskArray.filter((t) => t.status === 'pending').length,
+    running: taskArray.filter((t) => t.status === 'running').length,
+    completed: taskArray.filter((t) => t.status === 'completed').length,
+    failed: taskArray.filter((t) => t.status === 'failed').length
+  };
 }
-
-/**
- * 检查任务是否可以恢复
- */
-export function canResumeTask(status: TaskStatus): boolean {
-  return status === 'paused';
-}
-
-/**
- * 检查任务是否可以取消
- */
-export function canCancelTask(status: TaskStatus): boolean {
-  return status === 'running' || status === 'pending' || status === 'paused';
-}
-
-// 保留旧的导出名称以兼容现有代码
-export const useTaskPolling = useLocalTaskState;

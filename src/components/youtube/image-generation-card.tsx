@@ -1,11 +1,19 @@
 'use client';
 
-import { RefreshCw, Check, Loader2, Plus, User } from 'lucide-react';
+import {
+  RefreshCw,
+  Check,
+  Loader2,
+  Plus,
+  User,
+  Clock,
+  AlertCircle
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { Storyboard } from '@/types/youtube';
+import type { Storyboard, TaskStatus } from '@/types/youtube';
 import { ImageSelector } from '@/components/youtube/image-selector';
 
 export type StoryboardGenerationStatus =
@@ -19,6 +27,10 @@ export interface ImageGenerationCardProps {
   storyboard: Storyboard;
   /** Current status of the generation */
   status: StoryboardGenerationStatus;
+  /** Task status from async queue (optional) */
+  taskStatus?: TaskStatus | null;
+  /** Task progress percentage (0-100) */
+  taskProgress?: number;
   /** Callback when an image is selected */
   onSelectImage: (imageIndex: number) => Promise<void>;
   /** Callback to regenerate images for this storyboard */
@@ -28,15 +40,62 @@ export interface ImageGenerationCardProps {
 }
 
 // Get status badge variant and text
-function getStatusBadge(status: StoryboardGenerationStatus): {
+function getStatusBadge(
+  status: StoryboardGenerationStatus,
+  taskStatus?: TaskStatus | null
+): {
   variant: 'default' | 'secondary' | 'outline' | 'destructive';
   text: string;
+  icon?: React.ReactNode;
 } {
+  // 优先使用任务状态
+  if (taskStatus) {
+    switch (taskStatus) {
+      case 'pending':
+        return {
+          variant: 'outline',
+          text: '队列中',
+          icon: <Clock className='h-3 w-3' />
+        };
+      case 'running':
+        return {
+          variant: 'secondary',
+          text: '生成中',
+          icon: <Loader2 className='h-3 w-3 animate-spin' />
+        };
+      case 'failed':
+        return {
+          variant: 'destructive',
+          text: '失败',
+          icon: <AlertCircle className='h-3 w-3' />
+        };
+      case 'completed':
+        // 任务完成后，根据是否选择图片显示状态
+        if (status === 'selected') {
+          return {
+            variant: 'default',
+            text: '已选择',
+            icon: <Check className='h-3 w-3' />
+          };
+        }
+        return { variant: 'outline', text: '待选择' };
+    }
+  }
+
+  // 回退到本地状态
   switch (status) {
     case 'selected':
-      return { variant: 'default', text: '已选择' };
+      return {
+        variant: 'default',
+        text: '已选择',
+        icon: <Check className='h-3 w-3' />
+      };
     case 'generating':
-      return { variant: 'secondary', text: '生成中...' };
+      return {
+        variant: 'secondary',
+        text: '生成中',
+        icon: <Loader2 className='h-3 w-3 animate-spin' />
+      };
     case 'has_images':
       return { variant: 'outline', text: '待选择' };
     case 'pending':
@@ -67,14 +126,19 @@ function getGenerationTypeDisplay(storyboard: Storyboard): {
 export function ImageGenerationCard({
   storyboard,
   status,
+  taskStatus,
+  taskProgress,
   onSelectImage,
   onRegenerate,
   isGenerating = false
 }: ImageGenerationCardProps) {
-  const statusBadge = getStatusBadge(status);
+  const statusBadge = getStatusBadge(status, taskStatus);
   const images = storyboard.images;
   const hasImages = images.length > 0;
   const generationType = getGenerationTypeDisplay(storyboard);
+
+  // 显示任务进度
+  const showProgress = taskStatus === 'running' && taskProgress !== undefined;
 
   return (
     <Card className='overflow-hidden'>
@@ -84,10 +148,7 @@ export function ImageGenerationCard({
             微创新分镜 #{storyboard.index}
           </CardTitle>
           <Badge variant={statusBadge.variant} className='gap-1'>
-            {status === 'selected' && <Check className='h-3 w-3' />}
-            {status === 'generating' && (
-              <Loader2 className='h-3 w-3 animate-spin' />
-            )}
+            {statusBadge.icon}
             {statusBadge.text}
           </Badge>
         </div>
@@ -118,6 +179,21 @@ export function ImageGenerationCard({
             </div>
           )}
         </div>
+        {/* 任务进度条 */}
+        {showProgress && (
+          <div className='space-y-1'>
+            <div className='text-muted-foreground flex items-center justify-between text-xs'>
+              <span>生成进度</span>
+              <span>{taskProgress}%</span>
+            </div>
+            <div className='bg-muted h-1.5 w-full overflow-hidden rounded-full'>
+              <div
+                className='bg-primary h-full transition-all duration-300'
+                style={{ width: `${taskProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent className='space-y-4'>
         {/* Generated images grid */}

@@ -1,6 +1,15 @@
 'use client';
 
-import { RefreshCw, Check, Loader2, ImageIcon, Plus, User } from 'lucide-react';
+import {
+  RefreshCw,
+  Check,
+  Loader2,
+  ImageIcon,
+  Plus,
+  User,
+  Clock,
+  AlertCircle
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +17,8 @@ import { cn } from '@/lib/utils';
 import type {
   Storyboard,
   GeneratedImage,
-  GeneratedVideo
+  GeneratedVideo,
+  TaskStatus
 } from '@/types/youtube';
 import { VideoSelector } from '@/components/youtube/video-selector';
 
@@ -23,6 +33,10 @@ export interface VideoGenerationCardProps {
   storyboard: Storyboard;
   /** Current status of the video generation */
   status: VideoGenerationStatus;
+  /** Task status from async queue (optional) */
+  taskStatus?: TaskStatus | null;
+  /** Task progress percentage (0-100) */
+  taskProgress?: number;
   /** Callback when a video is selected */
   onSelectVideo: (videoIndex: number) => Promise<void>;
   /** Callback to regenerate videos for this storyboard */
@@ -34,15 +48,62 @@ export interface VideoGenerationCardProps {
 }
 
 // Get status badge variant and text
-function getStatusBadge(status: VideoGenerationStatus): {
+function getStatusBadge(
+  status: VideoGenerationStatus,
+  taskStatus?: TaskStatus | null
+): {
   variant: 'default' | 'secondary' | 'outline' | 'destructive';
   text: string;
+  icon?: React.ReactNode;
 } {
+  // 优先使用任务状态
+  if (taskStatus) {
+    switch (taskStatus) {
+      case 'pending':
+        return {
+          variant: 'outline',
+          text: '队列中',
+          icon: <Clock className='h-3 w-3' />
+        };
+      case 'running':
+        return {
+          variant: 'secondary',
+          text: '生成中',
+          icon: <Loader2 className='h-3 w-3 animate-spin' />
+        };
+      case 'failed':
+        return {
+          variant: 'destructive',
+          text: '失败',
+          icon: <AlertCircle className='h-3 w-3' />
+        };
+      case 'completed':
+        // 任务完成后，根据是否选择视频显示状态
+        if (status === 'selected') {
+          return {
+            variant: 'default',
+            text: '已选择',
+            icon: <Check className='h-3 w-3' />
+          };
+        }
+        return { variant: 'outline', text: '待选择' };
+    }
+  }
+
+  // 回退到本地状态
   switch (status) {
     case 'selected':
-      return { variant: 'default', text: '已选择' };
+      return {
+        variant: 'default',
+        text: '已选择',
+        icon: <Check className='h-3 w-3' />
+      };
     case 'generating':
-      return { variant: 'secondary', text: '生成中...' };
+      return {
+        variant: 'secondary',
+        text: '生成中',
+        icon: <Loader2 className='h-3 w-3 animate-spin' />
+      };
     case 'has_videos':
       return { variant: 'outline', text: '待选择' };
     case 'pending':
@@ -60,17 +121,22 @@ function getSelectedImage(storyboard: Storyboard): GeneratedImage | null {
 export function VideoGenerationCard({
   storyboard,
   status,
+  taskStatus,
+  taskProgress,
   onSelectVideo,
   onRegenerate,
   onPlayVideo,
   isGenerating = false
 }: VideoGenerationCardProps) {
-  const statusBadge = getStatusBadge(status);
+  const statusBadge = getStatusBadge(status, taskStatus);
   const videos = storyboard.videos;
   const hasVideos = videos.length > 0;
   const sourceImage = getSelectedImage(storyboard);
   const hasCharacterRefs =
     storyboard.character_refs && storyboard.character_refs.length > 0;
+
+  // 显示任务进度
+  const showProgress = taskStatus === 'running' && taskProgress !== undefined;
 
   return (
     <Card className='overflow-hidden'>
@@ -80,10 +146,7 @@ export function VideoGenerationCard({
             微创新分镜 #{storyboard.index}
           </CardTitle>
           <Badge variant={statusBadge.variant} className='gap-1'>
-            {status === 'selected' && <Check className='h-3 w-3' />}
-            {status === 'generating' && (
-              <Loader2 className='h-3 w-3 animate-spin' />
-            )}
+            {statusBadge.icon}
             {statusBadge.text}
           </Badge>
         </div>
@@ -98,6 +161,21 @@ export function VideoGenerationCard({
                   {ref}
                 </Badge>
               ))}
+            </div>
+          </div>
+        )}
+        {/* 任务进度条 */}
+        {showProgress && (
+          <div className='space-y-1'>
+            <div className='text-muted-foreground flex items-center justify-between text-xs'>
+              <span>生成进度</span>
+              <span>{taskProgress}%</span>
+            </div>
+            <div className='bg-muted h-1.5 w-full overflow-hidden rounded-full'>
+              <div
+                className='bg-primary h-full transition-all duration-300'
+                style={{ width: `${taskProgress}%` }}
+              />
             </div>
           </div>
         )}

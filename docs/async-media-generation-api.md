@@ -1,5 +1,64 @@
 # 异步媒体生成队列系统 - 前后端联调文档
 
+## ⚠️ 重要：旧接口迁移说明
+
+### 必须停止使用的旧接口
+
+**图片生成旧接口（同步）**:
+```
+❌ POST /api/youtube/projects/{project_id}/generate/image
+```
+
+**视频生成旧接口（同步）**:
+```
+❌ POST /api/youtube/projects/{project_id}/generate/video
+```
+
+### 为什么必须迁移？
+
+1. **阻塞问题**: 旧接口会阻塞30-120秒等待AI生成完成，前端无响应
+2. **并发问题**: 多个请求同时发送会导致API速率限制（429错误）
+3. **可靠性问题**: 网络超时或服务器重启会导致任务丢失
+4. **无法批量**: 只能串行等待，无法并发处理大量任务
+
+### 新接口（异步）
+
+**任务创建接口**:
+```
+✅ POST /api/tasks/create
+```
+
+**任务状态查询**:
+```
+✅ GET /api/tasks/{task_id}
+✅ POST /api/tasks/batch-status  (批量查询)
+```
+
+**项目任务列表**:
+```
+✅ GET /api/youtube/projects/{project_id}/generation-tasks
+```
+
+### 快速迁移对照表
+
+| 旧接口 | 新接口 | 响应时间 | 说明 |
+|--------|--------|----------|------|
+| POST /api/youtube/projects/{id}/generate/image | POST /api/tasks/create | 30-120秒 → <200ms | 立即返回task_id |
+| POST /api/youtube/projects/{id}/generate/video | POST /api/tasks/create | 60-180秒 → <200ms | 立即返回task_id |
+| 无 | POST /api/tasks/batch-status | - | 批量查询100个任务 |
+| 无 | GET /api/youtube/projects/{id}/generation-tasks | - | 查看项目所有任务 |
+
+### 迁移步骤
+
+1. **停止调用旧接口**: 立即停止使用 `/api/youtube/projects/{id}/generate/image` 和 `/generate/video`
+2. **改用任务创建接口**: 使用 `POST /api/tasks/create` 提交任务
+3. **实现轮询逻辑**: 使用 `POST /api/tasks/batch-status` 批量查询任务状态
+4. **更新UI**: 显示任务进度而非阻塞等待
+
+详细迁移示例见第10.3节。
+
+---
+
 ## 1. 功能概述
 
 ### 1.1 业务价值
@@ -1686,62 +1745,287 @@ TASK_RETENTION_DAYS = 30  # 任务保留天数
 
 #### 从同步接口迁移到异步接口
 
-**同步方式(旧)**:
+**❌ 旧方式（同步，必须停止使用）**:
 ```javascript
-// 同步等待,阻塞30-120秒
-async function generateImageSync(projectId, storyboardIndex, prompt) {
-  const response = await fetch('/api/youtube/generate-image', {
-    method: 'POST',
-    body: JSON.stringify({ project_id: projectId, storyboard_index: storyboardIndex, prompt })
-  });
+// 旧接口 - 阻塞30-120秒，导致429错误
+async function generateImageOld(projectId, storyboardIndex, prompt) {
+  const response = await fetch(
+    `/api/youtube/projects/${projectId}/generate/image`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storyboard_index: storyboardIndex,
+        prompt: prompt,
+        aspect_ratio: '9:16'
+      })
+    }
+  );
   
-  const result = await response.json();  // 等待生成完成
+  // 等待30-120秒才返回
+  const result = await response.json();
   return result.image_url;
+}
+
+// 批量生成 - 串行等待，非常慢
+async function batchGenerateOld(projectId, storyboards) {
+  const results = [];
+  for (const sb of storyboards) {
+    // 每个任务等待30-120秒
+    const url = await generateImageOld(projectId, sb.index, sb.prompt);
+    results.push(url);
+  }
+  return results;  // 10个任务需要5-20分钟！
 }
 ```
 
-**异步方式(新)**:
+**✅ 新方式（异步，推荐使用）**:
 ```javascript
-// 立即返回,后台处理
-async function generateImageAsync(projectId, storyboardIndex, prompt) {
-  // 1. 提交任务(<200ms)
-  const taskId = await createImageGenerationTask(projectId, storyboardIndex, prompt);
+// 新接口 - 立即返回(<200ms)
+async function generateImageNew(projectId, storyboardIndex, prompt) {
+  // 1. 提交任务（立即返回）
+  const response = await fetch('/api/tasks/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      module_name: 'image_generation',
+      task_type: 'generate_storyboard_image',
+      data: {
+        project_id: projectId,
+        storyboard_index: storyboardIndex,
+        prompt: prompt,
+        aspect_ratio: '9:16'
+      }
+    })
+  });
   
-  // 2. 轮询状态(非阻塞)
-  const result = await pollTaskUntilComplete(taskId, {
-    onProgress: (progress) => updateProgressBar(progress)
+  const { task_id } = await response.json();
+  
+  // 2. 轮询任务状态（非阻塞）
+  const result = await pollTaskUntilComplete(task_id, {
+    onProgress: (progress) => {
+      console.log(`任务进度: ${progress}%`);
+      updateProgressBar(progress);  // 更新UI
+    }
   });
   
   return result.media_url;
 }
-```
 
-**批量生成迁移**:
-```javascript
-// 同步方式 - 串行等待(慢)
-async function batchGenerateSync(storyboards) {
-  const results = [];
-  for (const sb of storyboards) {
-    const url = await generateImageSync(sb.projectId, sb.index, sb.prompt);
-    results.push(url);
-  }
-  return results;
-}
-
-// 异步方式 - 并发处理(快)
-async function batchGenerateAsync(storyboards) {
-  // 1. 批量提交
+// 批量生成 - 并发处理，快速
+async function batchGenerateNew(projectId, storyboards) {
+  // 1. 批量提交所有任务（几秒内完成）
   const taskIds = await Promise.all(
     storyboards.map(sb => 
-      createImageGenerationTask(sb.projectId, sb.index, sb.prompt)
+      fetch('/api/tasks/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module_name: 'image_generation',
+          task_type: 'generate_storyboard_image',
+          data: {
+            project_id: projectId,
+            storyboard_index: sb.index,
+            prompt: sb.prompt,
+            aspect_ratio: '9:16'
+          }
+        })
+      }).then(r => r.json()).then(d => d.task_id)
     )
   );
   
-  // 2. 批量轮询
-  const result = await pollBatchTasksUntilComplete(taskIds);
+  console.log(`已提交 ${taskIds.length} 个任务`);
+  
+  // 2. 批量轮询（使用批量查询接口）
+  const result = await pollBatchTasksUntilComplete(taskIds, {
+    onTaskUpdate: (task) => {
+      console.log(`任务 ${task.task_id}: ${task.status}`);
+      updateTaskUI(task);  // 更新UI
+    }
+  });
+  
   return result.completed.map(t => t.result.media_url);
+  // 10个任务只需要2-5分钟（并发处理）
 }
 ```
+
+#### 关键差异对比
+
+| 特性 | 旧接口（同步） | 新接口（异步） |
+|------|---------------|---------------|
+| 请求URL | `/api/youtube/projects/{id}/generate/image` | `/api/tasks/create` |
+| 请求体格式 | `{storyboard_index, prompt, ...}` | `{module_name, task_type, data: {...}}` |
+| 响应时间 | 30-120秒 | <200毫秒 |
+| 返回内容 | `{image_url, ...}` | `{task_id}` |
+| 批量处理 | 串行等待 | 并发处理 |
+| 进度显示 | 无 | 支持 |
+| 失败重试 | 需要前端重新请求 | 自动重试 |
+| 服务器重启 | 任务丢失 | 自动恢复 |
+
+#### 完整迁移示例
+
+```javascript
+// ============================================================================
+// 完整的迁移示例：从旧接口迁移到新接口
+// ============================================================================
+
+// ❌ 旧代码（必须删除）
+/*
+async function handleGenerateClick() {
+  showLoading();  // 显示加载中
+  
+  try {
+    const response = await fetch(
+      `/api/youtube/projects/${projectId}/generate/image`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          storyboard_index: currentIndex,
+          prompt: promptText,
+          aspect_ratio: '9:16'
+        })
+      }
+    );
+    
+    // 阻塞30-120秒
+    const result = await response.json();
+    
+    hideLoading();
+    displayImage(result.image_url);
+  } catch (error) {
+    hideLoading();
+    showError(error.message);
+  }
+}
+*/
+
+// ✅ 新代码（推荐）
+async function handleGenerateClick() {
+  try {
+    // 1. 提交任务（立即返回）
+    const response = await fetch('/api/tasks/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        module_name: 'image_generation',
+        task_type: 'generate_storyboard_image',
+        data: {
+          project_id: projectId,
+          storyboard_index: currentIndex,
+          prompt: promptText,
+          aspect_ratio: '9:16'
+        }
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || '任务创建失败');
+    }
+    
+    const { task_id } = await response.json();
+    
+    // 2. 显示进度条（非阻塞）
+    showProgressBar();
+    
+    // 3. 轮询任务状态
+    const result = await pollTaskUntilComplete(task_id, {
+      pollInterval: 3000,  // 每3秒查询一次
+      onProgress: (progress, status) => {
+        updateProgressBar(progress);
+        updateStatusText(status);
+      }
+    });
+    
+    // 4. 显示结果
+    hideProgressBar();
+    displayImage(result.media_url);
+    
+  } catch (error) {
+    hideProgressBar();
+    showError(error.message);
+  }
+}
+
+// 批量生成迁移示例
+async function handleBatchGenerateClick() {
+  const storyboards = getSelectedStoryboards();  // 获取选中的分镜
+  
+  try {
+    // 1. 批量提交任务
+    showBatchProgress(`正在提交 ${storyboards.length} 个任务...`);
+    
+    const taskIds = [];
+    for (const sb of storyboards) {
+      const response = await fetch('/api/tasks/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module_name: 'image_generation',
+          task_type: 'generate_storyboard_image',
+          data: {
+            project_id: projectId,
+            storyboard_index: sb.index,
+            prompt: sb.prompt,
+            aspect_ratio: '9:16'
+          }
+        })
+      });
+      
+      if (response.ok) {
+        const { task_id } = await response.json();
+        taskIds.push(task_id);
+      }
+    }
+    
+    showBatchProgress(`已提交 ${taskIds.length} 个任务，开始生成...`);
+    
+    // 2. 批量轮询
+    const taskStatusMap = new Map();
+    
+    await pollBatchTasksUntilComplete(taskIds, {
+      pollInterval: 3000,
+      onTaskUpdate: (task) => {
+        taskStatusMap.set(task.task_id, task);
+        
+        // 更新UI
+        const completed = Array.from(taskStatusMap.values())
+          .filter(t => t.status === 'completed').length;
+        const failed = Array.from(taskStatusMap.values())
+          .filter(t => t.status === 'failed').length;
+        
+        updateBatchProgress(completed, failed, taskIds.length);
+      },
+      onAllComplete: ({ completed, failed }) => {
+        hideBatchProgress();
+        showBatchResult(
+          `生成完成！成功: ${completed.length}, 失败: ${failed.length}`
+        );
+        
+        // 刷新项目数据
+        refreshProjectData();
+      }
+    });
+    
+  } catch (error) {
+    hideBatchProgress();
+    showError(error.message);
+  }
+}
+```
+
+#### 迁移检查清单
+
+- [ ] 删除所有对 `/api/youtube/projects/{id}/generate/image` 的调用
+- [ ] 删除所有对 `/api/youtube/projects/{id}/generate/video` 的调用
+- [ ] 实现 `POST /api/tasks/create` 任务创建逻辑
+- [ ] 实现 `POST /api/tasks/batch-status` 批量查询逻辑
+- [ ] 实现轮询函数 `pollTaskUntilComplete` 和 `pollBatchTasksUntilComplete`
+- [ ] 更新UI显示进度条而非阻塞等待
+- [ ] 测试单个任务提交和查询
+- [ ] 测试批量任务提交和查询
+- [ ] 测试页面刷新后状态恢复
+- [ ] 测试错误处理（429、超时等）
 
 ---
 
