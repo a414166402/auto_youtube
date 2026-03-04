@@ -1,70 +1,60 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { isConflictError, ConflictError } from '@/lib/api/youtube';
+import { isConflictError } from '@/lib/api/youtube';
 
 /**
- * 冲突处理 Hook
- * 用于统一处理 HTTP 409 冲突错误
+ * 统一的409冲突处理Hook
+ * 提供冲突检测、对话框状态管理和数据重新获取功能
  */
-export function useConflictHandler(onRefresh: () => void | Promise<void>) {
-  const [conflictOpen, setConflictOpen] = useState(false);
-  const [conflictDetail, setConflictDetail] = useState<string | undefined>();
+export function useConflictHandler(onRefetch: () => void | Promise<void>) {
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [conflictMessage, setConflictMessage] = useState<string>();
 
   /**
-   * 处理可能抛出冲突错误的操作
-   * 如果是 409 错误，显示冲突对话框
-   * 如果是其他错误，重新抛出
+   * 处理API错误，检测409冲突
+   * @returns true 如果是冲突错误，false 否则
    */
-  const handleConflict = useCallback((error: unknown): boolean => {
+  const handleError = useCallback((error: unknown): boolean => {
     if (isConflictError(error)) {
-      setConflictDetail((error as ConflictError).detail);
-      setConflictOpen(true);
+      setConflictMessage(error.detail);
+      setShowConflictDialog(true);
       return true;
     }
     return false;
   }, []);
 
   /**
-   * 包装异步操作，自动处理冲突错误
+   * 包装异步操作，自动处理409冲突
    */
   const withConflictHandling = useCallback(
     async <T>(operation: () => Promise<T>): Promise<T | null> => {
       try {
         return await operation();
       } catch (error) {
-        if (handleConflict(error)) {
+        if (handleError(error)) {
           return null;
         }
         throw error;
       }
     },
-    [handleConflict]
+    [handleError]
   );
 
   /**
-   * 刷新页面数据
+   * 重新获取数据并关闭对话框
    */
-  const handleRefresh = useCallback(async () => {
-    setConflictOpen(false);
-    setConflictDetail(undefined);
-    await onRefresh();
-  }, [onRefresh]);
-
-  /**
-   * 取消冲突对话框
-   */
-  const handleCancel = useCallback(() => {
-    setConflictOpen(false);
-    setConflictDetail(undefined);
-  }, []);
+  const handleRefetch = useCallback(async () => {
+    setShowConflictDialog(false);
+    await onRefetch();
+  }, [onRefetch]);
 
   return {
-    conflictOpen,
-    conflictDetail,
-    handleConflict,
+    showConflictDialog,
+    conflictMessage,
+    setShowConflictDialog,
+    handleError,
     withConflictHandling,
-    handleRefresh,
-    handleCancel
+    handleRefetch
   };
 }

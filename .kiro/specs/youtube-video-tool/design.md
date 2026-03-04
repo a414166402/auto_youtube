@@ -162,6 +162,7 @@ export interface GeneratedImage {
   image_url: string;
   generation_type: 'text_to_image' | 'image_text_to_image';  // 文生图 或 图文生图
   is_selected: boolean;
+  task_id?: string;         // 关联的异步任务ID
   created_at: string;
 }
 
@@ -174,22 +175,49 @@ export interface GeneratedVideo {
   source_image_id: string;  // 用户选择的图片ID
   video_url: string;
   is_selected: boolean;
+  task_id?: string;         // 关联的异步任务ID
   created_at: string;
 }
 
-// 生成任务
-export interface GenerationTask {
-  id: string;
-  project_id: string;
-  task_type: 'image' | 'video';
-  status: 'pending' | 'running' | 'completed' | 'failed';
+// 异步任务（基于任务队列系统）
+export interface AsyncTask {
+  task_id: string;
+  module_name: 'image_generation' | 'video_generation';
+  task_type: 'generate_storyboard_image' | 'generate_storyboard_video';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   progress: number;         // 0-100
-  total_items: number;
-  completed_items: number;
-  failed_items: number;
-  error_message?: string;
   created_at: string;
-  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  has_result: boolean;
+}
+
+// 批量任务状态查询响应
+export interface BatchTaskStatusResponse {
+  success: boolean;
+  tasks: AsyncTask[];
+  not_found: string[];      // 不存在的task_id列表
+}
+
+// 模块状态响应
+export interface ModuleStatusResponse {
+  status: 'running' | 'idle';
+  queue_processing: boolean;
+  queue_size: number;
+  message: string;
+  module_name: string;
+  total_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  pending_tasks: number;
+  running_tasks: number;
+  completion_percentage: number;
+  automation_info: {
+    is_busy: boolean;
+    can_add_new_tasks: boolean;
+    auto_reset_enabled: boolean;
+  };
 }
 
 // 结构化提示词JSON
@@ -452,55 +480,197 @@ GET    /projects/{project_id}/prompts/export       # 导出JSON
 ```
 
 
-### 7. 图片生成接口
+### 7. 图片生成接口（异步队列模式）
 
 ```
-POST   /projects/{project_id}/images/generate      # 批量生成图片
-GET    /projects/{project_id}/images               # 获取生成的图片
-POST   /images/{image_id}/regenerate               # 重新生成单张图片
-PUT    /images/{image_id}/select                   # 选择图片
-GET    /projects/{project_id}/images/task/{task_id}  # 获取生成任务状态
+POST   /api/tasks/create                                    # 创建图片生成任务
+GET    /api/tasks/{task_id}                                 # 查询单个任务状态
+POST   /api/tasks/batch-status                              # 批量查询任务状态
+GET    /api/youtube/projects/{project_id}/generation-tasks  # 查询项目任务列表
+POST   /images/{image_id}/regenerate                        # 重新生成单张图片（创建新任务）
+PUT    /images/{image_id}/select                            # 选择图片
 ```
 
-#### POST /projects/{project_id}/images/generate
+#### POST /api/tasks/create - 创建图片生成任务
 **Request:**
 ```json
 {
-  "storyboard_ids": ["sb_001", "sb_002"],  // 可选，不传则生成全部
-  "parallel_count": 3                       // 并行数量
+  "module_name": "image_generation",
+  "task_type": "generate_storyboard_image",
+  "execution_mode": "sequential",
+  "data": {
+    "project_id": "proj_123",
+    "storyboard_index": 0,
+    "prompt": "A beautiful sunset over mountains",
+    "character_images": ["https://example.com/char1.jpg", "https://example.com/char2.jpg"],
+    "aspect_ratio": "9:16",
+    "subject_mappings": {"角色A": "character_1"},
+    "ref_storyboard_indexes": [1, 2],
+    "ai_channel": "business"
+  }
 }
 ```
-**Response:**
+**Response - 成功:**
 ```json
 {
-  "task_id": "img_task_001",
-  "status": "running",
-  "total_items": 15,
-  "message": "开始批量生成图片"
+  "success": true,
+  "task_id": "image_generation_generate_storyboard_image_1234567890_abc123",
+  "message": "任务已创建并添加到 image_generation 队列"
+}
+```
+**Response - 模块忙碌 (HTTP 409):**
+```json
+{
+  "detail": "模块 image_generation 正在执行任务,无法添加新任务。原因: 处理器正在运行, 队列中有 5 个任务。请等待当前任务完成后再试。"
 }
 ```
 
-#### GET /projects/{project_id}/images
-**Query Params:** `storyboard_id`, `is_selected`
+#### GET /api/tasks/{task_id} - 查询单个任务状态
+**Response - pending状态:**
+```json
+{
+  "task_id": "image_generation_generate_storyboard_image_1234567890_abc123",
+  "module_name": "image_generation",
+  "task_type": "generate_storyboard_image",
+  "status": "pending",
+  "progress": 0,
+  "created_at": "2024-01-01T10:00:00",
+  "started_at": null,
+  "completed_at": null,
+  "error_message": null,
+  "has_result": false
+}
+```
+**Response - running状态:**
+```json
+{
+  "task_id": "image_generation_generate_storyboard_image_1234567890_abc123",
+  "module_name": "image_generation",
+  "task_type": "generate_storyboard_image",
+  "status": "running",
+  "progress": 50,
+  "created_at": "2024-01-01T10:00:00",
+  "started_at": "2024-01-01T10:00:05",
+  "completed_at": null,
+  "error_message": null,
+  "has_result": false
+}
+```
+**Response - completed状态:**
+```json
+{
+  "task_id": "image_generation_generate_storyboard_image_1234567890_abc123",
+  "module_name": "image_generation",
+  "task_type": "generate_storyboard_image",
+  "status": "completed",
+  "progress": 100,
+  "created_at": "2024-01-01T10:00:00",
+  "started_at": "2024-01-01T10:00:05",
+  "completed_at": "2024-01-01T10:00:30",
+  "error_message": null,
+  "has_result": true
+}
+```
+**Response - failed状态:**
+```json
+{
+  "task_id": "image_generation_generate_storyboard_image_1234567890_abc123",
+  "module_name": "image_generation",
+  "task_type": "generate_storyboard_image",
+  "status": "failed",
+  "progress": 0,
+  "created_at": "2024-01-01T10:00:00",
+  "started_at": "2024-01-01T10:00:05",
+  "completed_at": "2024-01-01T10:00:10",
+  "error_message": "图片生成失败: API rate limit exceeded",
+  "has_result": false
+}
+```
+
+#### POST /api/tasks/batch-status - 批量查询任务状态
+**Request:**
+```json
+{
+  "task_ids": [
+    "image_generation_generate_storyboard_image_1234567890_abc123",
+    "image_generation_generate_storyboard_image_1234567891_def456"
+  ]
+}
+```
 **Response:**
 ```json
 {
-  "data": [
+  "success": true,
+  "tasks": [
     {
-      "id": "img_001",
-      "storyboard_id": "sb_001",
-      "prompt_id": "prompt_001",
-      "image_url": "/storage/images/img_001.png",
-      "generation_type": "image_to_image",
-      "is_selected": true,
-      "created_at": "2025-12-28T10:30:00Z"
+      "task_id": "image_generation_generate_storyboard_image_1234567890_abc123",
+      "module_name": "image_generation",
+      "task_type": "generate_storyboard_image",
+      "status": "completed",
+      "progress": 100,
+      "created_at": "2024-01-01T10:00:00",
+      "started_at": "2024-01-01T10:00:05",
+      "completed_at": "2024-01-01T10:00:30",
+      "error_message": null,
+      "has_result": true
+    },
+    {
+      "task_id": "image_generation_generate_storyboard_image_1234567891_def456",
+      "module_name": "image_generation",
+      "task_type": "generate_storyboard_image",
+      "status": "running",
+      "progress": 50,
+      "created_at": "2024-01-01T10:00:01",
+      "started_at": "2024-01-01T10:00:35",
+      "completed_at": null,
+      "error_message": null,
+      "has_result": false
     }
   ],
-  "total": 45
+  "not_found": []
 }
 ```
 
-#### PUT /images/{image_id}/select
+#### GET /api/youtube/projects/{project_id}/generation-tasks - 查询项目任务列表
+**Query Params:** `task_type`, `status`, `limit`, `offset`
+**Response:**
+```json
+{
+  "project_id": "proj_123",
+  "tasks": [
+    {
+      "task_id": "image_generation_generate_storyboard_image_1234567890_abc123",
+      "task_type": "generate_storyboard_image",
+      "status": "completed",
+      "progress": 100,
+      "created_at": "2024-01-01T10:00:00",
+      "started_at": "2024-01-01T10:00:05",
+      "completed_at": "2024-01-01T10:00:30",
+      "storyboard_index": 0,
+      "result": {
+        "media_url": "https://example.com/image.jpg",
+        "media_index": 0
+      }
+    }
+  ],
+  "total": 50,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+#### POST /images/{image_id}/regenerate - 重新生成单张图片
+**说明:** 创建新的异步任务，返回task_id
+**Response:**
+```json
+{
+  "success": true,
+  "task_id": "image_generation_generate_storyboard_image_1234567892_xyz789",
+  "message": "重新生成任务已创建"
+}
+```
+
+#### PUT /images/{image_id}/select - 选择图片
 **Request:**
 ```json
 {
@@ -508,27 +678,61 @@ GET    /projects/{project_id}/images/task/{task_id}  # 获取生成任务状态
 }
 ```
 
-### 8. 视频生成接口
+### 8. 视频生成接口（异步队列模式）
 
 ```
-POST   /projects/{project_id}/videos/generate      # 批量生成视频
-GET    /projects/{project_id}/videos               # 获取生成的视频
-POST   /videos/{video_id}/regenerate               # 重新生成单个视频
-PUT    /videos/{video_id}/select                   # 选择视频
-GET    /projects/{project_id}/videos/task/{task_id}  # 获取生成任务状态
-POST   /projects/{project_id}/videos/download      # 批量下载选中视频
+POST   /api/tasks/create                                    # 创建视频生成任务
+GET    /api/tasks/{task_id}                                 # 查询单个任务状态
+POST   /api/tasks/batch-status                              # 批量查询任务状态
+POST   /videos/{video_id}/regenerate                        # 重新生成单个视频（创建新任务）
+PUT    /videos/{video_id}/select                            # 选择视频
+POST   /projects/{project_id}/videos/download               # 批量下载选中视频
 ```
 
-#### POST /projects/{project_id}/videos/generate
+#### POST /api/tasks/create - 创建视频生成任务
 **Request:**
 ```json
 {
-  "storyboard_ids": ["sb_001", "sb_002"],
-  "parallel_count": 2
+  "module_name": "video_generation",
+  "task_type": "generate_storyboard_video",
+  "execution_mode": "sequential",
+  "data": {
+    "project_id": "proj_123",
+    "storyboard_index": 0,
+    "image_data": "https://example.com/source.jpg",
+    "prompt": "Camera slowly zooms in",
+    "subject_mappings": {"角色A": "character_1"},
+    "source_image_index": 0
+  }
+}
+```
+**Response - 成功:**
+```json
+{
+  "success": true,
+  "task_id": "video_generation_generate_storyboard_video_1234567890_abc123",
+  "message": "任务已创建并添加到 video_generation 队列"
+}
+```
+**Response - 模块忙碌 (HTTP 409):**
+```json
+{
+  "detail": "模块 video_generation 正在执行任务,无法添加新任务。原因: 处理器正在运行, 队列中有 15 个任务。请等待当前任务完成后再试。"
 }
 ```
 
-#### POST /projects/{project_id}/videos/download
+#### POST /videos/{video_id}/regenerate - 重新生成单个视频
+**说明:** 创建新的异步任务，返回task_id
+**Response:**
+```json
+{
+  "success": true,
+  "task_id": "video_generation_generate_storyboard_video_1234567892_xyz789",
+  "message": "重新生成任务已创建"
+}
+```
+
+#### POST /projects/{project_id}/videos/download - 批量下载选中视频
 **Response:**
 ```json
 {
@@ -538,30 +742,45 @@ POST   /projects/{project_id}/videos/download      # 批量下载选中视频
 }
 ```
 
-### 9. 任务状态接口
+### 9. 任务状态接口（异步队列系统）
 
 ```
-GET    /tasks/{task_id}                            # 获取任务状态
-GET    /projects/{project_id}/tasks                # 获取项目所有任务
-POST   /tasks/{task_id}/pause                      # 暂停任务
-POST   /tasks/{task_id}/resume                     # 继续任务
-POST   /tasks/{task_id}/cancel                     # 取消任务
+GET    /api/tasks/{task_id}                            # 获取任务状态
+POST   /api/tasks/batch-status                         # 批量查询任务状态
+GET    /api/youtube/projects/{project_id}/generation-tasks  # 获取项目所有任务
+GET    /api/tasks/modules/{module_name}/status         # 查询模块状态和队列情况
 ```
 
-#### GET /tasks/{task_id}
+#### GET /api/tasks/{task_id} - 获取任务状态
+**说明:** 见第7节图片生成接口中的详细响应格式
+
+#### POST /api/tasks/batch-status - 批量查询任务状态
+**说明:** 见第7节图片生成接口中的详细响应格式
+**限制:** 最多一次查询100个任务
+
+#### GET /api/youtube/projects/{project_id}/generation-tasks - 获取项目所有任务
+**说明:** 见第7节图片生成接口中的详细响应格式
+
+#### GET /api/tasks/modules/{module_name}/status - 查询模块状态
 **Response:**
 ```json
 {
-  "id": "task_001",
-  "project_id": "proj_123",
-  "task_type": "image",
   "status": "running",
-  "progress": 45,
-  "total_items": 15,
-  "completed_items": 7,
-  "failed_items": 0,
-  "created_at": "2025-12-28T10:00:00Z",
-  "updated_at": "2025-12-28T10:15:00Z"
+  "queue_processing": true,
+  "queue_size": 15,
+  "message": "IMAGE_GENERATION数据处理队列正在运行，当前有 2 个任务正在执行，队列中还有 13 个待处理任务",
+  "module_name": "image_generation",
+  "total_tasks": 20,
+  "completed_tasks": 5,
+  "failed_tasks": 0,
+  "pending_tasks": 13,
+  "running_tasks": 2,
+  "completion_percentage": 25.0,
+  "automation_info": {
+    "is_busy": true,
+    "can_add_new_tasks": false,
+    "auto_reset_enabled": true
+  }
 }
 ```
 
@@ -917,21 +1136,28 @@ DELETE /subjects/{subject_id}                  # 删除主体
 - 配置的角色参考图可在提示词编辑页面被引用
 - 图片生成时，每个分镜最多支持3个角色参考图上传到图文生图接口
 
-### 页面6: 图片/视频生成页面 (`/dashboard/youtube/generate/[projectId]`)
+### 页面6: 图片/视频生成页面 (`/dashboard/youtube/generate/[projectId]`) - 异步队列模式
 
-**功能描述:** 批量生成图片和视频，选择最终素材
+**功能描述:** 批量生成图片和视频，使用异步任务队列系统
 
 **前置条件:**
 - 图片生成：提示词编辑完成（角色引用可选）
 - 视频生成：提示词完成 + 所有分镜图片已生成 + 用户已为每个分镜选择一张图片
 
-**图片生成逻辑:**
-- 有角色引用 → 调用图文生图接口（最多3张角色参考图 + text_to_image提示词）
-- 无角色引用 → 调用纯文生图接口（仅text_to_image提示词）
+**异步生成流程:**
+1. 用户点击"批量生成"按钮
+2. 前端批量调用 `POST /api/tasks/create` 创建任务，立即返回task_id列表
+3. 显示"任务已提交"提示
+4. 保存task_id列表到localStorage（支持页面刷新后恢复）
+5. 使用 `POST /api/tasks/batch-status` 批量轮询任务状态（每3秒）
+6. 实时更新每个分镜的任务状态：pending（排队中）、running（生成中X%）、completed（已完成）、failed（失败）
+7. 显示模块队列状态（当前执行X个，队列中Y个）
+8. 所有任务完成或失败后停止轮询，清理localStorage
 
-**视频生成逻辑:**
-- 输入图片：用户选择的图片
-- 输入文本：对应的 image_to_video 提示词
+**错误处理:**
+- 409错误：显示"系统忙碌，30秒后重试"
+- 任务失败：显示错误信息，提供"重试"按钮
+- 网络错误：显示"网络连接失败"，提供"重试"按钮
 
 **页面布局:**
 ```
@@ -939,12 +1165,14 @@ DELETE /subjects/{subject_id}                  # 删除主体
 │  ← 返回项目    素材生成                                      │
 │  [图片生成] [视频生成]                                       │
 ├─────────────────────────────────────────────────────────────┤
-│  生成进度: ████████████░░░░░░░░  60% (11/18)                │
-│  [暂停] [继续] [取消]                                        │
+│  整体进度: ████████████░░░░░░░░  60% (11/18已完成)          │
+│  队列状态: 当前执行2个任务，队列中还有5个待处理              │
+│  [批量生成剩余]                                              │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │ 微创新分镜 #1                               [已选择 ✓] ││
+│  │ 微创新分镜 #1                               [已完成 ✓] ││
 │  │ 生成方式: 图文生图 (角色: A, B)                         ││
+│  │ 任务状态: completed (100%)                              ││
 │  │ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐            ││
 │  │ │[图片1] │ │[图片2] │ │[图片3] │ │ [+]    │            ││
 │  │ │  ✓选中 │ │        │ │        │ │重新生成│            ││
@@ -953,24 +1181,33 @@ DELETE /subjects/{subject_id}                  # 删除主体
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │ 微创新分镜 #2                               [生成中...] ││
 │  │ 生成方式: 文生图 (无角色引用)                           ││
-│  │ ┌────────┐ ┌────────┐                                  ││
-│  │ │[图片1] │ │ ⟳     │                                  ││
-│  │ │        │ │生成中  │                                  ││
-│  │ └────────┘ └────────┘                                  ││
+│  │ 任务状态: running (45%)                                 ││
+│  │ ┌────────┐                                              ││
+│  │ │ ⟳ 45% │                                              ││
+│  │ │生成中  │                                              ││
+│  │ └────────┘                                              ││
 │  └─────────────────────────────────────────────────────────┘│
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │ 微创新分镜 #3                               [待生成]   ││
+│  │ 微创新分镜 #3                               [排队中]   ││
 │  │ 生成方式: 图文生图 (角色: A, B, C)                      ││
-│  │ [开始生成]                                             ││
+│  │ 任务状态: pending (0%)                                  ││
+│  │ 提示: 前面还有3个任务在排队                             ││
+│  └─────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ 微创新分镜 #4                               [失败 ✗]   ││
+│  │ 生成方式: 文生图                                        ││
+│  │ 任务状态: failed                                        ││
+│  │ 错误信息: 图片生成失败: API rate limit exceeded         ││
+│  │ [重试]                                                  ││
 │  └─────────────────────────────────────────────────────────┘│
 │  ...更多分镜...                                             │
 │                                                             │
 │  已选择: 11/18 个分镜                                       │
-│  [批量生成剩余]                    [继续下一步: 视频生成]    │
+│  [继续下一步: 视频生成]                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**视频生成Tab:**
+**视频生成Tab（异步模式）:**
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  ← 返回项目    素材生成                                      │
@@ -981,23 +1218,157 @@ DELETE /subjects/{subject_id}                  # 删除主体
 │  ✓ 所有分镜图片已生成                                       │
 │  ✓ 所有分镜已选择图片 (18/18)                               │
 ├─────────────────────────────────────────────────────────────┤
-│  生成进度: ████████░░░░░░░░░░░░  40% (7/18)                 │
+│  整体进度: ████████░░░░░░░░░░░░  40% (7/18已完成)           │
+│  队列状态: 当前执行10个任务，队列中还有1个待处理             │
+│  [批量生成剩余]                                              │
+├─────────────────────────────────────────────────────────────┤                 │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │ 微创新分镜 #1                               [已选择 ✓] ││
+│  │ 微创新分镜 #1                               [已完成 ✓] ││
 │  │ 源图片: [用户选择的图片缩略图]                          ││
 │  │ 提示词: Camera slowly follows the character...         ││
+│  │ 任务状态: completed (100%)                              ││
 │  │ ┌────────┐ ┌────────┐ ┌────────┐                       ││
 │  │ │[视频1] │ │[视频2] │ │ [+]    │                       ││
 │  │ │ ▶ 播放 │ │ ▶ 播放 │ │重新生成│                       ││
 │  │ │  ✓选中 │ │        │ │        │                       ││
 │  │ └────────┘ └────────┘ └────────┘                       ││
 │  └─────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ 微创新分镜 #2                               [生成中...] ││
+│  │ 源图片: [用户选择的图片缩略图]                          ││
+│  │ 任务状态: running (65%)                                 ││
+│  │ ┌────────┐                                              ││
+│  │ │ ⟳ 65% │                                              ││
+│  │ │生成中  │                                              ││
+│  │ └────────┘                                              ││
+│  └─────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ 微创新分镜 #3                               [排队中]   ││
+│  │ 源图片: [用户选择的图片缩略图]                          ││
+│  │ 任务状态: pending (0%)                                  ││
+│  │ 提示: 前面还有8个任务在排队                             ││
+│  └─────────────────────────────────────────────────────────┘│
 │  ...更多分镜...                                             │
 │                                                             │
 │  已选择: 7/18 个视频                                        │
-│  [批量生成剩余]                         [下载所有选中视频]   │
+│  [下载所有选中视频]                                         │
 └─────────────────────────────────────────────────────────────┘
+```
+
+**前端集成逻辑示例:**
+
+```typescript
+// 批量生成图片的异步流程
+async function batchGenerateImages(projectId: string, storyboards: Prompt[]) {
+  const taskIds: string[] = [];
+  
+  // 1. 批量提交任务
+  for (const sb of storyboards) {
+    try {
+      const response = await fetch('/api/tasks/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module_name: 'image_generation',
+          task_type: 'generate_storyboard_image',
+          data: {
+            project_id: projectId,
+            storyboard_index: sb.storyboard_index,
+            prompt: sb.text_to_image,
+            character_images: sb.character_refs?.map(ref => getCharacterImageUrl(ref)) || [],
+            aspect_ratio: '9:16'
+          }
+        })
+      });
+      
+      if (response.status === 409) {
+        // 模块忙碌，30秒后重试
+        showToast('系统正在处理其他任务，30秒后自动重试');
+        await sleep(30000);
+        continue;
+      }
+      
+      const result = await response.json();
+      taskIds.push(result.task_id);
+    } catch (error) {
+      console.error(`提交分镜${sb.storyboard_index}任务失败:`, error);
+    }
+  }
+  
+  // 2. 保存到localStorage
+  localStorage.setItem(`project_${projectId}_image_tasks`, JSON.stringify(taskIds));
+  
+  // 3. 批量轮询任务状态
+  await pollBatchTasksUntilComplete(taskIds, {
+    pollInterval: 3000,
+    onTaskUpdate: (task) => {
+      // 更新UI显示任务状态
+      updateTaskStatusUI(task);
+    },
+    onAllComplete: () => {
+      // 清理localStorage
+      localStorage.removeItem(`project_${projectId}_image_tasks`);
+      showToast('所有图片生成完成');
+    }
+  });
+}
+
+// 批量轮询函数
+async function pollBatchTasksUntilComplete(
+  taskIds: string[],
+  options: {
+    pollInterval: number;
+    onTaskUpdate: (task: AsyncTask) => void;
+    onAllComplete: () => void;
+  }
+) {
+  let pendingTaskIds = [...taskIds];
+  
+  while (pendingTaskIds.length > 0) {
+    // 批量查询任务状态
+    const response = await fetch('/api/tasks/batch-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_ids: pendingTaskIds })
+    });
+    
+    const result: BatchTaskStatusResponse = await response.json();
+    
+    // 处理每个任务的状态
+    const stillPending: string[] = [];
+    for (const task of result.tasks) {
+      options.onTaskUpdate(task);
+      
+      if (task.status === 'pending' || task.status === 'running') {
+        stillPending.push(task.task_id);
+      }
+    }
+    
+    pendingTaskIds = stillPending;
+    
+    if (pendingTaskIds.length > 0) {
+      await sleep(options.pollInterval);
+    }
+  }
+  
+  options.onAllComplete();
+}
+
+// 页面刷新后恢复轮询
+useEffect(() => {
+  const savedTaskIds = localStorage.getItem(`project_${projectId}_image_tasks`);
+  if (savedTaskIds) {
+    const taskIds = JSON.parse(savedTaskIds);
+    pollBatchTasksUntilComplete(taskIds, {
+      pollInterval: 3000,
+      onTaskUpdate: updateTaskStatusUI,
+      onAllComplete: () => {
+        localStorage.removeItem(`project_${projectId}_image_tasks`);
+      }
+    });
+  }
+}, [projectId]);
 ```
 
 
@@ -1040,7 +1411,7 @@ async function apiRequest<T>(
   if (response.status === 409) {
     const error = await response.json();
     throw new ConflictError(
-      '数据已被修改，请刷新页面后重试',
+      '数据已被修改，请重新获取最新数据后重试',
       error.detail
     );
   }
@@ -1068,7 +1439,7 @@ async function apiRequest<T>(
 
 interface ConflictDialogProps {
   open: boolean;
-  onRefresh: () => void;
+  onRefresh: () => void;  // 重新获取数据的回调函数，不刷新整个页面
   onCancel: () => void;
 }
 
@@ -1079,16 +1450,56 @@ export function ConflictDialog({ open, onRefresh, onCancel }: ConflictDialogProp
         <AlertDialogHeader>
           <AlertDialogTitle>数据冲突</AlertDialogTitle>
           <AlertDialogDescription>
-            数据已被其他用户修改，请刷新页面获取最新数据后重试。
+            数据已被其他用户修改，请重新获取最新数据后重试。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onCancel}>取消</AlertDialogCancel>
-          <AlertDialogAction onClick={onRefresh}>刷新页面</AlertDialogAction>
+          <AlertDialogAction onClick={onRefresh}>重新获取数据</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   );
+}
+```
+
+### 冲突处理实现说明
+
+**关键原则：局部数据更新，不刷新整个页面**
+
+1. **不使用 `window.location.reload()` 或 `router.refresh()`**
+   - 这些方法会刷新整个页面，导致用户失去滚动位置和页面状态
+
+2. **使用 React 状态更新或数据重新获取**
+   - 使用 React Query/SWR 的 `mutate()` 函数重新获取数据
+   - 或者直接调用 API 并更新 React 状态
+   - 只更新受影响的组件区域
+
+3. **保持用户体验**
+   - 保持当前滚动位置
+   - 保留用户输入内容（如可能）
+   - 只更新变化的数据，不触发整个页面重新渲染
+
+4. **实现示例**
+```typescript
+// 使用 React Query 的示例
+const { data, mutate } = useQuery(['project', projectId], () => getProject(projectId));
+
+const handleConflictRefresh = async () => {
+  // 重新获取数据，不刷新页面
+  await mutate();
+  setConflictDialogOpen(false);
+};
+
+// 或者使用普通 React 状态的示例
+const [projectData, setProjectData] = useState<Project | null>(null);
+
+const handleConflictRefresh = async () => {
+  // 重新获取数据并更新状态
+  const freshData = await getProject(projectId);
+  setProjectData(freshData);
+  setConflictDialogOpen(false);
+  // 滚动位置自动保持，因为没有刷新页面
 }
 ```
 
@@ -1165,63 +1576,83 @@ const projectWithHistory = await getProject(projectId, { full_history: true });
 *For any* 导出的结构化JSON，必须包含project_id、project_name、total_innovation_storyboards和prompts字段，且prompts数组中每项包含storyboard_index、text_to_image、image_to_video。
 **Validates: Requirements 5.1, 5.2, 5.4**
 
-### Property 10: 生成类型选择正确性
-*For any* 图片生成请求，如果对应提示词包含角色引用，则generation_type应为image_text_to_image；否则应为text_to_image。
-**Validates: Requirements 6.2, 6.3**
+### Property 10: 异步任务创建响应时间
+*For any* 图片或视频生成任务创建请求，API应在200毫秒内返回task_id，不应等待生成完成。
+**Validates: Requirements 6.1, 7.1, 12.1**
 
-### Property 11: 重新生成增加候选
-*For any* 图片或视频的重新生成操作，该分镜的候选列表长度应增加。
-**Validates: Requirements 6.5, 7.3**
+### Property 11: 任务状态流转正确性
+*For any* 异步任务，状态流转应遵循：pending → running → (completed | failed)，不应出现其他状态转换路径。
+**Validates: Requirements 6.4, 7.6, 12.10**
 
-### Property 12: 选择标记唯一性
-*For any* 分镜的图片或视频选择操作，同一分镜下只能有一个is_selected为true的项。
-**Validates: Requirements 6.6, 7.4**
+### Property 12: 批量状态查询一致性
+*For any* 批量任务状态查询请求，返回的任务状态应与单独查询每个任务的状态一致。
+**Validates: Requirements 6.6, 7.5, 12.6**
 
-### Property 13: 任务进度计算正确性
-*For any* 生成任务，progress百分比应等于(completed_items / total_items) * 100，且completed_items + failed_items <= total_items。
-**Validates: Requirements 8.1, 8.2**
+### Property 13: 任务ID持久化
+*For any* 创建的异步任务，保存task_id到localStorage后刷新页面，应能通过该task_id继续查询任务状态。
+**Validates: Requirements 6.4, 7.3, 8.8**
 
-### Property 14: 任务状态持久化
-*For any* 任务状态查询，无论是否刷新页面，返回的状态应与实际任务状态一致。
-**Validates: Requirements 8.4, 8.5**
+### Property 14: 模块忙碌错误处理
+*For any* 任务创建请求返回HTTP 409错误，前端应显示"系统正在处理其他任务"提示，并在30秒后自动重试，不应导致应用崩溃。
+**Validates: Requirements 6.5, 7.4, 12.4**
 
-### Property 15: 视频生成前置条件
-*For any* 视频生成请求，必须满足：提示词编辑完成 + 所有分镜图片已生成 + 用户已为每个分镜选择一张图片。
-**Validates: Requirements 7.7**
+### Property 15: 批量查询限制
+*For any* 批量状态查询请求，如果task_ids数组超过100个元素，应返回HTTP 400错误并提示超出限制。
+**Validates: Requirements 6.6, 12.5**
 
-### Property 16: 项目列表分镜数显示
+### Property 16: 并发限制验证
+*For any* 模块状态查询，图片生成模块的running_tasks应不超过2个，视频生成模块的running_tasks应不超过10个。
+**Validates: Requirements 6.12, 7.11, 12.2, 12.3**
+
+### Property 17: 任务结果关联
+*For any* 状态为completed且has_result为true的任务，查询项目生成任务列表时应能获取到对应的media_url和storyboard_index。
+**Validates: Requirements 6.8, 7.7, 12.11**
+
+### Property 18: 轮询动态优化
+*For any* 批量轮询过程，已完成（completed）或失败（failed）的任务应从轮询列表中移除，不应继续查询。
+**Validates: Requirements 8.7, 12.5**
+
+### Property 19: 任务失败重试
+*For any* 失败的任务，点击"重试"按钮应创建新的异步任务，新任务的task_id应与原任务不同。
+**Validates: Requirements 6.10, 7.9, 8.5**
+
+### Property 20: 队列状态显示
+*For any* 模块状态查询响应，应包含queue_size、running_tasks、pending_tasks字段，且queue_size = pending_tasks + running_tasks。
+**Validates: Requirements 8.10, 12.5**
+
+### Property 21: 项目列表分镜数显示
 *For any* 项目列表查询，每个项目应显示两个分镜数：源视频分镜数和微创新分镜数（如果已生成提示词）。
 **Validates: Requirements 1.6**
 
-### Property 17: 409冲突错误处理
-*For any* 返回HTTP 409状态码的API响应，前端应显示冲突提示信息并提供刷新选项，不应导致应用崩溃。
-**Validates: Requirements 9.1, 9.2, 9.3**
+### Property 22: 409冲突错误处理
+*For any* 返回HTTP 409状态码的API响应，前端应显示冲突提示信息并提供重新获取数据选项，重新获取数据时应只更新受影响的组件区域，保持用户滚动位置和页面状态，不刷新整个页面，不应导致应用崩溃。
+**Validates: Requirements 9.1, 9.2, 9.3, 9.6, 9.7**
 
-### Property 18: 冲突处理覆盖范围
+### Property 23: 冲突处理覆盖范围
 *For any* 以下操作（项目更新、媒体清理、分镜删除、分镜新增、分镜交换、版本切换），当返回409错误时，应触发统一的冲突处理逻辑。
 **Validates: Requirements 9.4**
 
-### Property 19: 提示词历史默认加载
+### Property 24: 提示词历史默认加载
 *For any* 项目详情查询（不带full_history参数），返回的prompt_history应只包含当前版本的历史记录。
 **Validates: Requirements 10.1**
 
-### Property 20: 提示词完整历史加载
+### Property 25: 提示词完整历史加载
 *For any* 项目详情查询（带full_history=true参数），返回的prompt_history应包含所有历史版本记录。
 **Validates: Requirements 10.2, 10.3**
 
-### Property 21: 主体CRUD一致性
+### Property 26: 主体CRUD一致性
 *For any* 创建的主体，查询该主体应返回相同的数据（包括description字段）；删除后查询应返回404或空结果。
 **Validates: Requirements 11.1, 11.2**
 
-### Property 22: 主体描述更新持久性
+### Property 27: 主体描述更新持久性
 *For any* 主体描述的更新操作，保存后再次查询应返回更新后的值；传递空字符串应将description设置为null；不传递description字段应保持原值不变。
 **Validates: Requirements 11.3, 11.4, 11.5**
 
-### Property 23: 主体描述字符支持
+### Property 28: 主体描述字符支持
 *For any* 包含UTF-8字符（中文、英文、数字、emoji等）的description字段，保存后查询应返回相同的字符内容。
 **Validates: Requirements 11.6**
 
-### Property 24: 主体列表description字段完整性
+### Property 29: 主体列表description字段完整性
 *For any* 主体列表查询，返回的每个主体必须包含description字段（值为string或null）。
 **Validates: Requirements 11.1**
 
@@ -1231,8 +1662,11 @@ const projectWithHistory = await getProject(projectId, { full_history: true });
 - URL验证函数测试
 - 数据模型验证测试
 - 状态转换逻辑测试
-- 进度计算函数测试
+- 异步任务状态流转测试
+- 批量查询逻辑测试
+- 轮询优化算法测试
 - 409冲突错误处理测试
+- 模块忙碌错误处理测试
 - full_history参数传递测试
 - description字段CRUD操作测试
 - description字段UTF-8字符支持测试
@@ -1242,16 +1676,24 @@ const projectWithHistory = await getProject(projectId, { full_history: true });
 - API端点测试（使用mock外部服务）
 - 数据库CRUD操作测试
 - 文件上传/下载测试
+- 异步任务创建和查询测试
+- 批量状态查询性能测试
 - 并发冲突场景测试（模拟409响应）
+- 任务队列并发限制测试
 
 ### Property-Based Testing
 使用 `fast-check` 库进行属性测试：
 - 最少100次迭代
 - 每个测试标注对应的设计属性
 - 标签格式: **Feature: youtube-video-tool, Property {number}: {property_text}**
+- 重点测试异步任务状态流转的所有可能路径
+- 测试批量查询在不同任务数量下的一致性
 
 ### E2E测试
-- 完整工作流测试（创建项目→下载→分镜→提示词→生成）
+- 完整工作流测试（创建项目→下载→分镜→提示词→异步生成）
+- 异步任务轮询和状态恢复测试
+- 页面刷新后任务状态恢复测试
+- 模块忙碌时的重试机制测试
 - 错误恢复测试
 - 并发操作测试
 - 409冲突恢复测试

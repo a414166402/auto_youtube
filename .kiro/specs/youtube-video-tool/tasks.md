@@ -205,104 +205,190 @@
     - **Property 8: 角色映射应用**
     - **Validates: Requirements 5.3, 5.4, 5.5, 6.3**
 
-- [x] 10. 图片生成页面实现
+- [x] 10. 图片生成页面实现（异步队列模式）
   - [x] 10.1 创建素材生成页面
     - 更新 `src/app/dashboard/youtube/generate/[projectId]/page.tsx`
     - 实现图片生成和视频生成两个Tab
     - 显示整体生成进度条
     - 包含暂停/继续/取消按钮
-    - _Requirements: 7.1, 9.1, 9.4_
+    - _Requirements: 6.1, 8.1, 8.10_
 
   - [x] 10.2 创建图片生成分镜卡片组件
     - 创建 `src/components/youtube/image-generation-card.tsx`
     - 显示分镜状态（已选择/生成中/待生成）
     - 显示生成的图片网格
     - 支持图片选择
-    - 包含重新生成按钮
-    - _Requirements: 7.4, 7.5, 7.6_
+    - 包含重新生成按钮（创建新异步任务）
+    - _Requirements: 6.8, 6.10, 6.11_
 
   - [x] 10.3 创建图片选择器组件
     - 创建 `src/components/youtube/image-selector.tsx`
     - 支持点击选择图片
     - 显示选中状态
     - 支持图片预览放大
-    - _Requirements: 7.6_
+    - _Requirements: 6.11_
 
-  - [x] 10.4 编写图片生成页面单元测试
+  - [x] 10.4 实现异步任务创建逻辑
+    - 更新 `src/lib/api/youtube.ts` 添加任务创建函数
+    - 调用 POST /api/tasks/create 接口
+    - 处理成功响应并保存task_id
+    - 处理409错误并实现30秒后自动重试
+    - 将task_id保存到localStorage支持页面刷新恢复
+    - _Requirements: 6.1, 6.4, 6.5, 6.8_
 
-    - 测试进度条显示
+  - [x] 10.5 实现批量任务状态查询
+    - 更新 `src/lib/api/youtube.ts` 添加批量状态查询函数
+    - 调用 POST /api/tasks/batch-status 接口
+    - 支持一次查询最多100个任务
+    - 处理not_found任务列表
+    - _Requirements: 6.6, 6.7_
+
+  - [x] 10.6 实现任务轮询逻辑
+    - 更新 `src/hooks/use-task-polling.ts`
+    - 每3秒调用批量状态查询接口
+    - 动态移除completed和failed状态的任务
+    - 只轮询pending和running状态的任务
+    - 所有任务完成后停止轮询并清理localStorage
+    - _Requirements: 6.7, 8.6, 8.7, 8.8, 8.9_
+
+  - [x] 10.7 实现页面刷新后状态恢复
+    - 从localStorage读取task_id列表
+    - 调用批量状态查询接口恢复任务状态
+    - 继续轮询未完成的任务
+    - _Requirements: 6.4, 8.8_
+
+  - [ ]* 10.8 编写图片生成页面单元测试
+    - 测试异步任务创建
+    - 测试批量状态查询
+    - 测试任务轮询逻辑
+    - 测试409错误自动重试
+    - 测试页面刷新后状态恢复
     - 测试图片选择功能
     - 测试重新生成功能
     - **Property 11: 重新生成增加候选**
     - **Property 12: 选择标记唯一性**
-    - **Validates: Requirements 7.5, 7.6, 8.3, 8.4**
+    - **Property 25: 异步任务创建响应时间**
+    - **Property 26: 批量状态查询性能**
+    - **Validates: Requirements 6.1, 6.4, 6.5, 6.6, 6.7, 6.8, 6.10, 6.11**
 
-- [x] 11. 视频生成功能实现
+- [x] 11. 视频生成功能实现（异步队列模式）
   - [x] 11.1 创建视频生成分镜卡片组件
     - 创建 `src/components/youtube/video-generation-card.tsx`
     - 显示源图片缩略图
     - 显示生成的视频列表
     - 支持视频播放预览
     - 支持视频选择
-    - 包含重新生成按钮
-    - _Requirements: 8.1, 8.2, 8.3, 8.4_
+    - 包含重新生成按钮（创建新异步任务）
+    - _Requirements: 7.1, 7.7, 7.8, 7.9, 7.10_
 
   - [x] 11.2 创建视频播放器组件
     - 创建 `src/components/youtube/video-player.tsx`
     - 支持视频播放控制
     - 支持全屏播放
-    - _Requirements: 8.2_
+    - _Requirements: 7.7_
 
-  - [x] 11.3 实现批量下载功能
+  - [x] 11.3 实现异步任务创建逻辑
+    - 更新 `src/lib/api/youtube.ts` 添加视频任务创建函数
+    - 调用 POST /api/tasks/create 接口
+    - 处理成功响应并保存task_id
+    - 处理409错误并实现30秒后自动重试
+    - 将task_id保存到localStorage支持页面刷新恢复
+    - _Requirements: 7.1, 7.2, 7.3, 7.4_
+
+  - [x] 11.4 实现批量任务状态查询
+    - 复用图片生成的批量状态查询函数
+    - 支持视频生成任务的状态查询
+    - _Requirements: 7.5, 7.6_
+
+  - [x] 11.5 实现任务轮询逻辑
+    - 复用 `src/hooks/use-task-polling.ts`
+    - 每3秒调用批量状态查询接口
+    - 动态移除completed和failed状态的任务
+    - 只轮询pending和running状态的任务
+    - 所有任务完成后停止轮询并清理localStorage
+    - _Requirements: 7.6, 8.6, 8.7, 8.8, 8.9_
+
+  - [x] 11.6 实现批量下载功能
     - 添加下载所有选中视频按钮
     - 显示下载进度
     - 处理下载完成提示
-    - _Requirements: 8.6_
+    - _Requirements: 7.12_
 
-  - [x] 11.4 编写视频生成功能单元测试
-
+  - [ ]* 11.7 编写视频生成功能单元测试
+    - 测试异步任务创建
+    - 测试批量状态查询
+    - 测试任务轮询逻辑
+    - 测试409错误自动重试
+    - 测试页面刷新后状态恢复
     - 测试视频列表渲染
     - 测试视频选择功能
     - 测试下载功能
     - **Property 12: 选择标记唯一性**
-    - **Validates: Requirements 8.4**
+    - **Property 25: 异步任务创建响应时间**
+    - **Property 26: 批量状态查询性能**
+    - **Validates: Requirements 7.1, 7.3, 7.4, 7.5, 7.6, 7.10**
 
 - [x] 12. Checkpoint - 生成功能验证
   - 确保图片生成页面正常显示
   - 确保视频生成Tab正常显示
+  - 确保异步任务创建和轮询正常工作
   - 确保进度条和状态更新正常
   - 如有问题请询问用户
 
 
-- [x] 13. 任务状态管理实现
+- [x] 13. 任务状态管理实现（基于异步任务队列）
   - [x] 13.1 创建任务状态轮询Hook
-    - 创建 `src/hooks/use-task-polling.ts`
-    - 实现任务状态定时轮询
+    - 更新 `src/hooks/use-task-polling.ts`
+    - 实现基于批量状态查询的轮询逻辑
+    - 每3秒调用一次批量状态查询接口
+    - 动态移除completed和failed状态的任务
+    - 只轮询pending和running状态的任务
+    - 所有任务完成后自动停止轮询
     - 支持暂停/恢复轮询
     - 处理任务完成/失败回调
-    - _Requirements: 9.1, 9.2, 9.5_
+    - _Requirements: 8.1, 8.2, 8.6, 8.7, 8.9_
 
   - [x] 13.2 创建进度条组件
-    - 创建 `src/components/youtube/generation-progress.tsx`
-    - 显示整体进度百分比
-    - 显示完成/失败/总数统计
+    - 更新 `src/components/youtube/generation-progress.tsx`
+    - 基于异步任务状态显示整体进度百分比
+    - 显示已完成任务数/总任务数
+    - 显示pending/running/completed/failed任务统计
     - 支持动画效果
-    - _Requirements: 9.1, 9.2_
+    - _Requirements: 8.1, 8.2_
 
   - [x] 13.3 创建任务控制组件
-    - 创建 `src/components/youtube/task-controls.tsx`
+    - 更新 `src/components/youtube/task-controls.tsx`
     - 包含暂停/继续/取消按钮
     - 根据任务状态显示/隐藏按钮
-    - _Requirements: 9.4_
+    - 暂停时停止轮询，继续时恢复轮询
+    - _Requirements: 8.5_
 
-  - [x] 13.4 编写任务状态管理单元测试
+  - [x] 13.4 实现模块状态查询和显示
+    - 更新 `src/lib/api/youtube.ts` 添加模块状态查询函数
+    - 调用 GET /api/tasks/modules/{module_name}/status 接口
+    - 在生成页面显示队列积压情况
+    - 显示模块是否忙碌和可否添加新任务
+    - _Requirements: 8.10, 12.1, 12.2, 12.3_
 
-    - 测试轮询Hook功能
+  - [x] 13.5 实现localStorage任务持久化
+    - 任务创建成功后保存task_id到localStorage
+    - 页面刷新时从localStorage恢复task_id列表
+    - 任务完成或失败后从localStorage移除
+    - 所有任务完成后清理localStorage
+    - _Requirements: 6.4, 7.3, 8.8_
+
+  - [ ]* 13.6 编写任务状态管理单元测试
+    - 测试批量状态查询轮询逻辑
+    - 测试动态移除已完成任务
     - 测试进度计算
     - 测试状态转换
+    - 测试localStorage持久化和恢复
+    - 测试模块状态查询
     - **Property 13: 任务进度计算正确性**
     - **Property 14: 任务状态持久化**
-    - **Validates: Requirements 9.1, 9.2, 9.4, 9.5**
+    - **Property 27: 轮询动态优化**
+    - **Property 28: 模块状态查询准确性**
+    - **Validates: Requirements 8.1, 8.2, 8.6, 8.7, 8.8, 8.9, 8.10**
 
 - [x] 14. 通用组件和工具函数
   - [x] 14.1 创建加载状态组件
@@ -354,7 +440,7 @@
   - [x] 17.2 创建冲突提示对话框组件
     - 创建 `src/components/youtube/conflict-dialog.tsx`
     - 显示友好的冲突提示信息
-    - 包含"刷新页面"和"取消"按钮
+    - 包含"重新获取数据"和"取消"按钮（不是"刷新页面"）
     - _Requirements: 9.2, 9.3_
 
   - [x] 17.3 在受影响的页面集成冲突处理
@@ -362,15 +448,19 @@
     - 更新提示词编辑页面处理409错误
     - 更新素材生成页面处理409错误
     - （项目详情页和分镜页只有读操作，无需处理）
-    - _Requirements: 9.4, 9.5_
+    - **实现方式**：使用 React Query 的 `mutate()` 或直接调用 API 更新 React 状态
+    - **禁止使用**：`window.location.reload()` 或 `router.refresh()`
+    - **目标**：只更新受影响的数据，保持滚动位置和页面状态
+    - _Requirements: 9.3, 9.4, 9.5, 9.6, 9.7_
 
   - [ ]* 17.4 编写409冲突处理单元测试
     - 测试API客户端409错误检测
     - 测试冲突对话框显示
-    - 测试刷新后数据恢复
+    - 测试数据重新获取（不刷新页面）
+    - 测试滚动位置保持
     - **Property 17: 409冲突错误处理**
     - **Property 18: 冲突处理覆盖范围**
-    - **Validates: Requirements 9.1, 9.2, 9.3, 9.4**
+    - **Validates: Requirements 9.1, 9.2, 9.3, 9.4, 9.6, 9.7**
 
 - [x] 18. API v2 变更支持 - 提示词历史优化
   - [x] 18.1 更新API客户端支持full_history参数
@@ -450,10 +540,17 @@
     - **Property 24: 主体列表description字段完整性**
     - **Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5, 11.6**
 
-- [x] 21. Checkpoint - description 字段功能验证
+- [ ] 21. Checkpoint - description 字段功能验证
   - 确保 description 字段在所有主体类型中正常显示
   - 确保创建、更新、清空描述功能正常
   - 确保第2个主体创建时显示提示
+  - 如有问题请询问用户
+
+- [ ] 22. Final Checkpoint - 所有功能验证
+  - 确保所有已完成的功能正常工作
+  - 确保异步任务创建和轮询正常（任务10、11、13已实现）
+  - 确保409冲突处理正常（任务17待实现）
+  - 确保主体描述字段正常（任务20待实现）
   - 如有问题请询问用户
 
 ## Notes
@@ -464,4 +561,16 @@
 - 属性测试验证通用正确性属性
 - 单元测试验证具体示例和边界情况
 - 后端FastAPI接口将在阶段二单独实现，前端可先使用mock数据开发
+
+### 异步队列模式说明
+
+图片和视频生成采用异步任务队列模式，关键实现要点：
+
+1. **任务创建**: 调用 POST /api/tasks/create 立即返回task_id，不等待生成完成
+2. **409错误处理**: 模块忙碌时返回409，前端显示提示并在30秒后自动重试
+3. **批量状态查询**: 使用 POST /api/tasks/batch-status 一次查询最多100个任务
+4. **轮询优化**: 每3秒轮询一次，动态移除completed和failed状态的任务，只轮询pending和running任务
+5. **状态持久化**: task_id保存到localStorage，页面刷新后自动恢复并继续轮询
+6. **模块状态**: 使用 GET /api/tasks/modules/{module_name}/status 查询队列积压情况
+7. **并发限制**: 图片生成最多2个并发，视频生成最多10个并发
 

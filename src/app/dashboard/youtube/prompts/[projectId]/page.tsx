@@ -17,7 +17,8 @@ import {
   RefreshCw,
   Plus,
   Minus,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,7 +75,8 @@ import {
   DeleteStoryboardDialog,
   AddStoryboardDialog,
   SwapStoryboardDialog,
-  ConflictDialog
+  ConflictDialog,
+  PromptHistoryDialog
 } from '@/components/youtube';
 import { useConflictHandler } from '@/hooks/use-conflict-handler';
 import type {
@@ -127,6 +129,7 @@ export default function PromptsPage({ params }: PromptsPageProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [swapDialogOpen, setSwapDialogOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedStoryboard, setSelectedStoryboard] =
     useState<Storyboard | null>(null);
   const [selectedStoryboardIndex, setSelectedStoryboardIndex] =
@@ -202,11 +205,11 @@ export default function PromptsPage({ params }: PromptsPageProps) {
 
   // 409 冲突处理
   const {
-    conflictOpen,
-    conflictDetail,
-    handleConflict,
-    handleRefresh,
-    handleCancel
+    showConflictDialog,
+    conflictMessage,
+    setShowConflictDialog,
+    handleError: handleConflict,
+    handleRefetch
   } = useConflictHandler(loadData);
 
   // 更新分镜提示词
@@ -366,7 +369,28 @@ export default function PromptsPage({ params }: PromptsPageProps) {
     }
   };
 
-  // V2: 版本切换
+  // 加载完整历史
+  const handleLoadFullHistory = async () => {
+    try {
+      const projectData = await getProject(projectId, { fullHistory: true });
+      if (projectData.data.prompt_history) {
+        const historyResponse = projectData.data.prompt_history.map((h) => ({
+          version: h.version,
+          created_at: h.created_at,
+          instruction: h.instruction,
+          storyboard_count: h.storyboards.length,
+          parent_version: h.parent_version
+        }));
+        setVersions(historyResponse);
+      }
+    } catch (err) {
+      toast({
+        title: '加载失败',
+        description: err instanceof Error ? err.message : '加载完整历史失败',
+        variant: 'destructive'
+      });
+    }
+  };
   const handleVersionChange = async (version: string) => {
     try {
       const result = await switchPromptVersion(projectId, { version });
@@ -652,6 +676,18 @@ export default function PromptsPage({ params }: PromptsPageProps) {
               versions={versions}
               onVersionChange={handleVersionChange}
             />
+          )}
+
+          {/* V2: 查看历史按钮 */}
+          {versions.length > 0 && (
+            <Button
+              variant='outline'
+              onClick={() => setHistoryDialogOpen(true)}
+              className='gap-1'
+            >
+              <Clock className='h-4 w-4' />
+              查看历史
+            </Button>
           )}
 
           {/* V2: 继续对话按钮 */}
@@ -1000,12 +1036,22 @@ export default function PromptsPage({ params }: PromptsPageProps) {
         onConfirm={handleSwapStoryboards}
       />
 
+      {/* 提示词历史对话框 */}
+      <PromptHistoryDialog
+        projectId={projectId}
+        currentVersion={currentVersion}
+        versions={versions}
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+        onLoadFullHistory={handleLoadFullHistory}
+      />
+
       {/* 409 冲突提示对话框 */}
       <ConflictDialog
-        open={conflictOpen}
-        onRefresh={handleRefresh}
-        onCancel={handleCancel}
-        detail={conflictDetail}
+        open={showConflictDialog}
+        onOpenChange={setShowConflictDialog}
+        onRefetch={handleRefetch}
+        message={conflictMessage}
       />
     </div>
   );

@@ -22,6 +22,13 @@ YouTube AI视频制作工具模块，用于辅助用户从对标爆款YouTube视
 - **Optimistic_Lock**: 乐观锁，用于解决多用户同时操作同一项目时的数据覆盖问题
 - **Data_Version**: 数据版本号，用于乐观锁机制的版本控制
 - **Prompt_History**: 提示词历史版本，记录提示词的所有修改历史
+- **Async_Task**: 异步任务，通过任务队列系统处理的媒体生成任务
+- **Task_ID**: 任务标识符，用于查询和追踪异步任务状态的唯一ID
+- **Task_Status**: 任务状态，包括pending（等待中）、running（执行中）、completed（已完成）、failed（失败）
+- **Task_Queue_System**: 任务队列系统，管理异步任务的创建、执行、状态追踪和并发控制
+- **Batch_Status_Query**: 批量状态查询，一次性查询多个任务状态的接口，最多支持100个任务
+- **Concurrency_Limit**: 并发限制，图片生成最多2个并发，视频生成最多10个并发
+- **Task_Polling**: 任务轮询，前端定期查询任务状态直到完成或失败的机制
 
 ## Requirements
 
@@ -91,46 +98,81 @@ YouTube AI视频制作工具模块，用于辅助用户从对标爆款YouTube视
 4. THE Prompt_Structurer SHALL 验证JSON数据结构的完整性
 5. WHEN 用户导出数据 THEN THE Prompt_Structurer SHALL 提供JSON文件下载
 
-### Requirement 6: 文生图与图文生图批量生成
+### Requirement 6: 文生图与图文生图批量生成（异步队列模式）
 
 **User Story:** As a 视频创作者, I want to 批量生成分镜图片, so that I can 获得视频制作所需的图片素材。
 
 #### Acceptance Criteria
 
-1. WHEN 用户启动图片生成 THEN THE Image_Generator SHALL 根据提示词数据批量调用生成接口
-2. WHEN 提示词包含角色引用 THEN THE Image_Generator SHALL 使用角色引用图片调用图文生图接口（角色引用图片 + text_to_image提示词）
-3. WHEN 提示词不包含角色引用 THEN THE Image_Generator SHALL 直接调用文生图接口（仅text_to_image提示词）
-4. WHEN 图片生成完成 THEN THE Image_Selector SHALL 显示所有生成的图片供用户选择
-5. WHEN 用户对图片不满意 THEN THE Image_Generator SHALL 允许重新生成并将新图片加入候选列表
-6. WHEN 用户选择图片 THEN THE Image_Selector SHALL 将选中的图片标记为该分镜的最终图片
-7. THE Image_Generator SHALL 支持并行生成多个分镜的图片
-8. THE 图片生成前置条件 SHALL 为提示词编辑完成（角色引用可选）
+1. WHEN 用户启动图片生成 THEN THE Image_Generator SHALL 调用异步任务创建接口（POST /api/tasks/create）并立即返回task_id
+2. WHEN 提示词包含角色引用 THEN THE Image_Generator SHALL 在任务数据中包含character_images字段用于图文生图
+3. WHEN 提示词不包含角色引用 THEN THE Image_Generator SHALL 在任务数据中不包含character_images字段用于纯文生图
+4. WHEN 任务创建成功 THEN THE Image_Generator SHALL 保存task_id到本地存储以支持页面刷新后恢复
+5. WHEN 任务创建失败返回409错误 THEN THE Image_Generator SHALL 显示"系统正在处理其他任务，请稍后重试"并在30秒后自动重试
+6. THE Image_Generator SHALL 使用批量状态查询接口（POST /api/tasks/batch-status）轮询任务状态
+7. THE Image_Generator SHALL 每3秒轮询一次任务状态，动态移除已完成或失败的任务
+8. WHEN 任务状态为completed THEN THE Image_Selector SHALL 显示生成的图片供用户选择
+9. WHEN 任务状态为failed THEN THE Image_Generator SHALL 显示错误信息并允许重新生成
+10. WHEN 用户对图片不满意 THEN THE Image_Generator SHALL 创建新的异步任务并将新图片加入候选列表
+11. WHEN 用户选择图片 THEN THE Image_Selector SHALL 将选中的图片标记为该分镜的最终图片
+12. THE Image_Generator SHALL 支持最多2个并发图片生成任务，超出部分自动排队
+13. THE 图片生成前置条件 SHALL 为提示词编辑完成（角色引用可选）
 
-### Requirement 7: 图生视频批量生成
+### Requirement 7: 图生视频批量生成（异步队列模式）
 
 **User Story:** As a 视频创作者, I want to 从图片批量生成视频片段, so that I can 获得最终视频的素材。
 
 #### Acceptance Criteria
 
-1. WHEN 用户启动视频生成 THEN THE Video_Generator SHALL 使用用户选定的图片和对应的image_to_video提示词调用Grok Imagine API
-2. WHEN 视频生成完成 THEN THE Video_Selector SHALL 显示所有生成的视频供用户选择
-3. WHEN 用户对视频不满意 THEN THE Video_Generator SHALL 允许重新生成并将新视频加入候选列表
-4. WHEN 用户选择视频 THEN THE Video_Selector SHALL 将选中的视频标记为该分镜的最终视频
-5. THE Video_Generator SHALL 支持并行生成多个分镜的视频
-6. WHEN 所有分镜视频选择完成 THEN THE Video_Downloader SHALL 提供批量下载功能
-7. THE 视频生成前置条件 SHALL 为：提示词编辑完成 + 所有分镜图片已生成 + 用户已为每个分镜选择一张图片
+1. WHEN 用户启动视频生成 THEN THE Video_Generator SHALL 调用异步任务创建接口（POST /api/tasks/create）并立即返回task_id
+2. WHEN 创建视频生成任务 THEN THE Video_Generator SHALL 在任务数据中包含用户选定的图片URL和对应的image_to_video提示词
+3. WHEN 任务创建成功 THEN THE Video_Generator SHALL 保存task_id到本地存储以支持页面刷新后恢复
+4. WHEN 任务创建失败返回409错误 THEN THE Video_Generator SHALL 显示"系统正在处理其他任务，请稍后重试"并在30秒后自动重试
+5. THE Video_Generator SHALL 使用批量状态查询接口（POST /api/tasks/batch-status）轮询任务状态
+6. THE Video_Generator SHALL 每3秒轮询一次任务状态，动态移除已完成或失败的任务
+7. WHEN 任务状态为completed THEN THE Video_Selector SHALL 显示生成的视频供用户选择
+8. WHEN 任务状态为failed THEN THE Video_Generator SHALL 显示错误信息并允许重新生成
+9. WHEN 用户对视频不满意 THEN THE Video_Generator SHALL 创建新的异步任务并将新视频加入候选列表
+10. WHEN 用户选择视频 THEN THE Video_Selector SHALL 将选中的视频标记为该分镜的最终视频
+11. THE Video_Generator SHALL 支持最多10个并发视频生成任务，超出部分自动排队
+12. WHEN 所有分镜视频选择完成 THEN THE Video_Downloader SHALL 提供批量下载功能
+13. THE 视频生成前置条件 SHALL 为：提示词编辑完成 + 所有分镜图片已生成 + 用户已为每个分镜选择一张图片
 
-### Requirement 8: 生成进度与状态管理
+### Requirement 8: 生成进度与状态管理（基于异步任务）
 
 **User Story:** As a 视频创作者, I want to 实时查看生成进度和状态, so that I can 了解工作流的执行情况。
 
 #### Acceptance Criteria
 
-1. WHEN 批量生成任务开始 THEN THE Progress_Tracker SHALL 显示整体进度百分比
-2. WHEN 单个生成任务完成或失败 THEN THE Progress_Tracker SHALL 更新对应分镜的状态
-3. IF 生成任务失败 THEN THE Progress_Tracker SHALL 显示错误信息并允许单独重试
-4. THE Progress_Tracker SHALL 支持暂停和继续批量生成任务
-5. WHEN 用户刷新页面 THEN THE Progress_Tracker SHALL 恢复显示当前任务状态
+1. WHEN 批量生成任务开始 THEN THE Progress_Tracker SHALL 显示整体进度百分比（已完成任务数/总任务数）
+2. WHEN 批量状态查询返回结果 THEN THE Progress_Tracker SHALL 更新每个分镜的任务状态（pending/running/completed/failed）
+3. WHEN 任务状态为running THEN THE Progress_Tracker SHALL 显示该任务的进度百分比（0-100）
+4. WHEN 任务状态为failed THEN THE Progress_Tracker SHALL 显示错误信息并提供"重试"按钮
+5. WHEN 用户点击重试 THEN THE Progress_Tracker SHALL 创建新的异步任务替换失败的任务
+6. THE Progress_Tracker SHALL 每3秒调用批量状态查询接口更新所有任务状态
+7. THE Progress_Tracker SHALL 只轮询pending和running状态的任务，自动移除completed和failed状态的任务
+8. WHEN 用户刷新页面 THEN THE Progress_Tracker SHALL 从本地存储恢复task_id列表并继续轮询
+9. WHEN 所有任务完成或失败 THEN THE Progress_Tracker SHALL 停止轮询并清理本地存储
+10. THE Progress_Tracker SHALL 使用模块状态查询接口（GET /api/tasks/modules/{module_name}/status）显示队列积压情况
+
+### Requirement 12: 异步任务队列系统
+
+**User Story:** As a 视频创作者, I want to 使用异步队列处理大批量媒体生成任务, so that I can 避免长时间等待和任务丢失。
+
+#### Acceptance Criteria
+
+1. WHEN 前端调用任务创建接口 THEN THE Task_Queue_System SHALL 在200毫秒内返回task_id
+2. THE Task_Queue_System SHALL 将图片生成任务的并发数限制为2个，超出部分自动排队
+3. THE Task_Queue_System SHALL 将视频生成任务的并发数限制为10个，超出部分自动排队
+4. WHEN 任务创建时模块正在执行任务 THEN THE Task_Queue_System SHALL 返回HTTP 409错误并提示等待时间
+5. THE Task_Queue_System SHALL 支持批量查询最多100个任务的状态
+6. WHEN 批量查询接口被调用 THEN THE Task_Queue_System SHALL 使用单个SQL查询返回所有任务状态
+7. THE Task_Queue_System SHALL 持久化所有任务到数据库，服务器重启后自动恢复
+8. WHEN 任务执行失败 THEN THE Task_Queue_System SHALL 自动重试最多3次
+9. THE Task_Queue_System SHALL 保留已完成和失败的任务30天后自动清理
+10. WHEN 查询单个任务状态 THEN THE Task_Queue_System SHALL 返回task_id、status、progress、created_at、started_at、completed_at、error_message和has_result字段
+11. WHEN 任务状态为completed且has_result为true THEN THE Task_Queue_System SHALL 在result字段中包含media_url、media_index和storyboard_index
+12. THE Task_Queue_System SHALL 支持通过项目ID查询该项目的所有生成任务列表
 
 ### Requirement 9: 并发冲突处理（乐观锁机制）
 
@@ -139,10 +181,12 @@ YouTube AI视频制作工具模块，用于辅助用户从对标爆款YouTube视
 #### Acceptance Criteria
 
 1. WHEN 后端返回HTTP 409 Conflict错误 THEN THE Conflict_Handler SHALL 显示友好的冲突提示信息
-2. WHEN 发生数据冲突 THEN THE Conflict_Handler SHALL 提示用户"数据已被修改，请刷新页面后重试"
-3. WHEN 用户确认冲突提示 THEN THE Conflict_Handler SHALL 自动刷新当前页面数据
+2. WHEN 发生数据冲突 THEN THE Conflict_Handler SHALL 提示用户"数据已被修改，请重新获取最新数据后重试"
+3. WHEN 用户确认冲突提示 THEN THE Conflict_Handler SHALL 重新获取受影响的数据并更新UI，不刷新整个页面
 4. THE Conflict_Handler SHALL 在以下操作中处理409错误：项目更新、媒体清理、分镜删除、分镜新增、分镜交换、版本切换
 5. IF 发生409冲突 THEN THE Conflict_Handler SHALL 不丢失用户当前的输入内容（如可能）
+6. WHEN 重新获取数据后 THEN THE Conflict_Handler SHALL 保持用户当前的滚动位置和页面状态
+7. THE Conflict_Handler SHALL 只更新受影响的组件区域，不触发整个页面重新渲染
 
 ### Requirement 10: 提示词历史版本管理
 
