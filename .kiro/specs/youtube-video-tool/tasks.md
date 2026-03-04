@@ -483,7 +483,7 @@
     - **Property 20: 提示词完整历史加载**
     - **Validates: Requirements 10.1, 10.2, 10.3**
 
-- [ ] 19. Checkpoint - API v2 变更验证
+- [x] 19. Checkpoint - API v2 变更验证
   - 确保409错误能正确捕获和显示
   - 确保冲突对话框正常工作
   - 确保full_history参数正确传递
@@ -540,13 +540,13 @@
     - **Property 24: 主体列表description字段完整性**
     - **Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5, 11.6**
 
-- [ ] 21. Checkpoint - description 字段功能验证
+- [x] 21. Checkpoint - description 字段功能验证
   - 确保 description 字段在所有主体类型中正常显示
   - 确保创建、更新、清空描述功能正常
   - 确保第2个主体创建时显示提示
   - 如有问题请询问用户
 
-- [ ] 22. Final Checkpoint - 所有功能验证
+- [x] 22. Final Checkpoint - 所有功能验证
   - 确保所有已完成的功能正常工作
   - 确保异步任务创建和轮询正常（任务10、11、13已实现）
   - 确保409冲突处理正常（任务17待实现）
