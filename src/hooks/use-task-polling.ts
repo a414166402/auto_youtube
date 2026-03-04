@@ -24,7 +24,7 @@ export interface UseTaskPollingReturn {
   isPolling: boolean;
   /** 任务状态映射 */
   tasks: Map<string, TaskInfo>;
-  /** 开始轮询 */
+  /** 开始轮询（会累积添加新任务，不会覆盖现有任务） */
   startPolling: (taskIds: string[]) => void;
   /** 停止轮询 */
   stopPolling: () => void;
@@ -142,21 +142,27 @@ export function useTaskPolling(
     }
   }, [isPaused, pollInterval, maxAttempts]);
 
-  // 开始轮询
+  // 开始轮询（累积添加任务，不覆盖现有任务）
   const startPolling = useCallback(
     (taskIds: string[]) => {
       if (taskIds.length === 0) return;
 
-      clearTimer();
-      pendingTaskIdsRef.current = [...taskIds];
-      attemptCountRef.current = 0;
-      setIsPolling(true);
-      setIsPaused(false);
+      // 合并新任务ID到现有任务列表（去重）
+      const existingIds = new Set(pendingTaskIdsRef.current);
+      const newIds = taskIds.filter((id) => !existingIds.has(id));
 
-      // 初始化任务状态
+      if (newIds.length === 0) {
+        // 所有任务都已在轮询中，无需操作
+        return;
+      }
+
+      // 累积添加新任务
+      pendingTaskIdsRef.current = [...pendingTaskIdsRef.current, ...newIds];
+
+      // 初始化新任务状态
       setTasks((prev) => {
         const newTasks = new Map(prev);
-        for (const taskId of taskIds) {
+        for (const taskId of newIds) {
           if (!newTasks.has(taskId)) {
             newTasks.set(taskId, {
               task_id: taskId,
@@ -175,10 +181,18 @@ export function useTaskPolling(
         return newTasks;
       });
 
-      // 立即开始第一次轮询
-      poll();
+      // 如果当前没有在轮询，启动轮询
+      if (!isPolling) {
+        attemptCountRef.current = 0;
+        setIsPolling(true);
+        setIsPaused(false);
+        clearTimer();
+        // 立即开始第一次轮询
+        poll();
+      }
+      // 如果已经在轮询，新任务会在下一次轮询时自动被包含
     },
-    [clearTimer, poll]
+    [clearTimer, poll, isPolling]
   );
 
   // 停止轮询

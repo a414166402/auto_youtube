@@ -181,105 +181,105 @@ export function VideoGenerationCard({
         )}
       </CardHeader>
       <CardContent className='space-y-4'>
-        {/* Source image and generated videos */}
-        <div className='flex gap-4'>
-          {/* Source image */}
-          <div className='w-32 flex-shrink-0'>
-            <p className='text-muted-foreground mb-1 text-xs'>源图片</p>
-            <div className='bg-muted relative aspect-video overflow-hidden rounded-md'>
-              {sourceImage ? (
-                <img
-                  src={sourceImage.url}
-                  alt={`分镜 ${storyboard.index} 源图片`}
-                  className='h-full w-full object-cover'
-                />
-              ) : (
-                <div className='flex h-full w-full flex-col items-center justify-center gap-1'>
-                  <ImageIcon className='text-muted-foreground h-6 w-6' />
-                  <span className='text-muted-foreground text-xs'>
-                    未选择图片
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Generated videos grid */}
-          <div className='flex-1'>
-            <div className='mb-1 flex items-center justify-between'>
-              <p className='text-muted-foreground text-xs'>
-                生成的视频 ({videos.length})
-              </p>
-              {hasVideos && (
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  onClick={onRegenerate}
-                  disabled={isGenerating || !sourceImage}
-                  className='h-7 gap-1 text-xs'
-                >
-                  {status === 'generating' ? (
-                    <Loader2 className='h-3 w-3 animate-spin' />
-                  ) : (
-                    <RefreshCw className='h-3 w-3' />
-                  )}
-                  重新生成
-                </Button>
-              )}
-            </div>
-
-            {hasVideos ? (
-              <div className='grid grid-cols-3 gap-2'>
-                {videos.map((video, index) => (
-                  <VideoSelector
-                    key={index}
-                    video={video}
-                    isSelected={storyboard.selected_video_index === index}
-                    onSelect={async () => onSelectVideo(index)}
-                    onPlay={onPlayVideo ? () => onPlayVideo(video) : undefined}
-                  />
-                ))}
-              </div>
+        {/* Source image section */}
+        <div>
+          <p className='text-muted-foreground mb-2 text-xs'>源图片</p>
+          <div className='bg-muted border-muted-foreground/20 relative aspect-video overflow-hidden rounded-md border-2 border-dashed'>
+            {sourceImage ? (
+              <img
+                src={sourceImage.url}
+                alt={`分镜 ${storyboard.index} 源图片`}
+                className='h-full w-full object-cover'
+              />
             ) : (
-              <div
-                className={cn(
-                  'flex h-24 items-center justify-center rounded-md border-2 border-dashed',
-                  status === 'generating'
-                    ? 'border-primary/50 bg-primary/5'
-                    : 'border-muted',
-                  !sourceImage && 'opacity-50'
-                )}
-              >
-                {status === 'generating' ? (
-                  <div className='text-muted-foreground flex items-center gap-2 text-sm'>
-                    <Loader2 className='h-4 w-4 animate-spin' />
-                    正在生成...
-                  </div>
-                ) : !sourceImage ? (
-                  <div className='text-muted-foreground flex items-center gap-2 text-sm'>
-                    <ImageIcon className='h-4 w-4' />
-                    请先选择源图片
-                  </div>
-                ) : (
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    onClick={onRegenerate}
-                    disabled={isGenerating}
-                    className='gap-1'
-                  >
-                    <Plus className='h-4 w-4' />
-                    生成视频
-                  </Button>
-                )}
+              <div className='flex h-full w-full flex-col items-center justify-center gap-1'>
+                <ImageIcon className='text-muted-foreground h-6 w-6' />
+                <span className='text-muted-foreground text-xs'>
+                  未选择图片
+                </span>
               </div>
             )}
           </div>
         </div>
 
+        {/* Generated videos grid */}
+        <div>
+          <div className='mb-2 flex items-center justify-between'>
+            <p className='text-muted-foreground text-xs'>
+              生成的视频 ({videos.length})
+            </p>
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={onRegenerate}
+              disabled={isGenerating || !sourceImage}
+              className='h-7 gap-1 text-xs'
+            >
+              {status === 'generating' ? (
+                <Loader2 className='h-3 w-3 animate-spin' />
+              ) : (
+                <Plus className='h-3 w-3' />
+              )}
+              重新生成
+            </Button>
+          </div>
+
+          {hasVideos ? (
+            <div className='grid grid-cols-4 gap-2'>
+              {videos.map((video, index) => (
+                <VideoSelector
+                  key={index}
+                  video={video}
+                  isSelected={storyboard.selected_video_index === index}
+                  onSelect={async () => onSelectVideo(index)}
+                  onPlay={onPlayVideo ? () => onPlayVideo(video) : undefined}
+                />
+              ))}
+            </div>
+          ) : (
+            <div
+              className={cn(
+                'flex h-24 items-center justify-center rounded-md border-2 border-dashed',
+                status === 'generating'
+                  ? 'border-primary/50 bg-primary/5'
+                  : 'border-muted',
+                !sourceImage && 'opacity-50'
+              )}
+            >
+              {status === 'generating' ? (
+                <div className='text-muted-foreground flex items-center gap-2 text-sm'>
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                  正在生成...
+                </div>
+              ) : !sourceImage ? (
+                <div className='text-muted-foreground flex items-center gap-2 text-sm'>
+                  <ImageIcon className='h-4 w-4' />
+                  请先选择源图片
+                </div>
+              ) : (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={onRegenerate}
+                  disabled={isGenerating}
+                  className='gap-1'
+                >
+                  <RefreshCw className='h-4 w-4' />
+                  开始生成
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* 图生视频提示词预览 */}
         <div className='text-muted-foreground bg-muted/50 rounded-md p-2 text-sm'>
-          <p className='mb-1 text-xs font-medium'>图生视频提示词:</p>
+          <p className='mb-1 text-xs font-medium'>
+            图生视频提示词
+            <span className='text-muted-foreground/60 ml-1 text-[10px]'>
+              (用于生成视频的详细指令)
+            </span>
+          </p>
           <p className='line-clamp-2'>{storyboard.image_to_video || '暂无'}</p>
         </div>
       </CardContent>
