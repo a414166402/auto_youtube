@@ -553,6 +553,98 @@
   - 确保主体描述字段正常（任务20待实现）
   - 如有问题请询问用户
 
+- [ ] 23. 异步队列接口迁移（关键任务）
+  - [ ] 23.1 更新API客户端 - 添加异步任务接口
+    - 更新 `src/lib/api/youtube.ts`
+    - **删除旧接口**: `generateImage()` 和 `generateVideo()`
+    - **添加新接口**: `createImageTask()`, `createVideoTask()`, `getBatchTaskStatus()`, `getProjectTasks()`
+    - 实现 `POST /api/tasks/create` 调用逻辑
+    - 实现 `POST /api/tasks/batch-status` 批量查询逻辑
+    - 实现 `GET /api/youtube/projects/{id}/generation-tasks` 查询逻辑
+    - 处理409错误并实现30秒后自动重试
+    - _Requirements: 异步媒体生成队列系统文档 2.1, 2.2, 2.3, 2.4_
+
+  - [ ] 23.2 更新任务轮询Hook - 实现批量轮询
+    - 更新 `src/hooks/use-task-polling.ts`
+    - **删除本地状态管理逻辑**
+    - **实现基于批量状态查询的轮询**
+    - 每3秒调用 `POST /api/tasks/batch-status` 接口
+    - 动态移除completed和failed状态的任务
+    - 只轮询pending和running状态的任务
+    - 所有任务完成后自动停止轮询
+    - 支持暂停/恢复轮询
+    - _Requirements: 异步媒体生成队列系统文档 3.2, 3.3_
+
+  - [ ] 23.3 实现localStorage任务持久化
+    - 创建 `src/lib/task-storage.ts` 工具函数
+    - 任务创建成功后保存task_id到localStorage
+    - 页面刷新时从localStorage恢复task_id列表
+    - 调用批量状态查询接口恢复任务状态
+    - 继续轮询未完成的任务
+    - 所有任务完成后清理localStorage
+    - _Requirements: 异步媒体生成队列系统文档 3.4_
+
+  - [ ] 23.4 更新图片生成组件 - 使用异步接口
+    - 更新 `src/components/youtube/image-generation-card.tsx`
+    - 调用 `createImageTask()` 而非 `generateImage()`
+    - 使用新的任务轮询Hook
+    - 显示任务状态（pending/running/completed/failed）
+    - 显示任务进度百分比
+    - 处理409错误提示
+    - _Requirements: 异步媒体生成队列系统文档 10.2, 10.3, 10.4_
+
+  - [ ] 23.5 更新视频生成组件 - 使用异步接口
+    - 更新 `src/components/youtube/video-generation-card.tsx`
+    - 调用 `createVideoTask()` 而非 `generateVideo()`
+    - 使用新的任务轮询Hook
+    - 显示任务状态（pending/running/completed/failed）
+    - 显示任务进度百分比
+    - 处理409错误提示
+    - _Requirements: 异步媒体生成队列系统文档 11.1, 11.3_
+
+  - [ ] 23.6 更新素材生成页面 - 集成异步逻辑
+    - 更新 `src/app/dashboard/youtube/generate/[projectId]/page.tsx`
+    - 实现批量任务提交逻辑
+    - 实现页面刷新后状态恢复
+    - 显示整体进度条（基于批量任务状态）
+    - 显示队列积压情况（调用模块状态接口）
+    - _Requirements: 异步媒体生成队列系统文档 10.1, 10.7, 13.4_
+
+  - [ ] 23.7 更新进度条组件 - 基于异步任务状态
+    - 更新 `src/components/youtube/generation-progress.tsx`
+    - 基于批量任务状态显示进度
+    - 显示pending/running/completed/failed任务统计
+    - 显示已完成任务数/总任务数
+    - _Requirements: 异步媒体生成队列系统文档 13.2_
+
+  - [ ] 23.8 更新任务控制组件 - 支持暂停/继续
+    - 更新 `src/components/youtube/task-controls.tsx`
+    - 暂停时停止轮询
+    - 继续时恢复轮询
+    - 根据任务状态显示/隐藏按钮
+    - _Requirements: 异步媒体生成队列系统文档 13.3_
+
+  - [ ]* 23.9 编写异步队列迁移单元测试
+    - 测试异步任务创建
+    - 测试批量状态查询
+    - 测试任务轮询逻辑
+    - 测试409错误自动重试
+    - 测试页面刷新后状态恢复
+    - 测试localStorage持久化
+    - **Property 25: 异步任务创建响应时间**
+    - **Property 26: 批量状态查询性能**
+    - **Property 27: 轮询动态优化**
+    - **Property 28: 模块状态查询准确性**
+    - **Validates: 异步媒体生成队列系统文档 2.1-2.4, 3.2-3.4, 10.1-10.7, 11.1-11.6, 13.1-13.5**
+
+- [ ] 24. Checkpoint - 异步队列迁移验证
+  - 确保旧的同步接口已完全删除
+  - 确保新的异步接口正常工作
+  - 确保批量任务提交和轮询正常
+  - 确保页面刷新后状态恢复正常
+  - 确保409错误处理正常
+  - 如有问题请询问用户
+
 ## Notes
 
 - 标记为 `*` 的任务为可选任务（主要是测试任务），可根据需要跳过以加快MVP开发
