@@ -57,7 +57,7 @@ export interface Storyboard {
 // 项目JSONB数据（与后端ProjectData对齐）
 export interface ProjectData {
   name: string;
-  youtube_url: string;
+  youtube_url?: string | null;
   status: ProjectStatus;
   prompt_version?: string | null;
   aspect_ratio?: AspectRatio; // V2新增：图片生成比例
@@ -81,7 +81,7 @@ export interface ProjectResponse {
 export interface ProjectListItem {
   id: string;
   name: string;
-  youtube_url: string;
+  youtube_url?: string | null;
   status: ProjectStatus;
   storyboard_count: number;
   cover_url?: string | null; // 封面图片URL（从viral_context.image_host_cover_url提取）
@@ -129,7 +129,7 @@ export interface GenerateVideoResponse {
 // 创建项目请求
 export interface CreateProjectRequest {
   name: string;
-  youtube_url: string;
+  youtube_url?: string;
 }
 
 // 更新项目请求

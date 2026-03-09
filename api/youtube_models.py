@@ -62,7 +62,7 @@ class Storyboard(BaseModel):
 class ProjectData(BaseModel):
     """项目JSONB数据"""
     name: str
-    youtube_url: str
+    youtube_url: Optional[str] = None
     status: ProjectStatus = ProjectStatus.CREATED
     prompt_version: Optional[str] = None
     storyboards: List[Storyboard] = []              # 分镜数组（生成提示词后初始化）
@@ -73,7 +73,7 @@ class ProjectData(BaseModel):
 class CreateProjectRequest(BaseModel):
     """创建项目请求"""
     name: str = Field(..., min_length=1, max_length=100)
-    youtube_url: str
+    youtube_url: Optional[str] = None
 
 
 class UpdateProjectRequest(BaseModel):

@@ -43,8 +43,11 @@ const formSchema = z.object({
     .max(100, '项目名称不能超过100个字符'),
   youtube_url: z
     .string()
-    .min(1, '请输入YouTube视频URL')
-    .regex(youtubeUrlRegex, '请输入有效的YouTube视频URL')
+    .optional()
+    .refine(
+      (val) => !val || val.trim() === '' || youtubeUrlRegex.test(val),
+      '请输入有效的YouTube视频URL'
+    )
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -94,7 +97,7 @@ export function CreateProjectDialog({ onSuccess }: CreateProjectDialogProps) {
         <DialogHeader>
           <DialogTitle>创建新项目</DialogTitle>
           <DialogDescription>
-            输入项目名称和YouTube视频URL来创建新的AI视频制作项目
+            输入项目名称来创建新的AI视频制作项目，YouTube视频URL为可选项
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -117,7 +120,7 @@ export function CreateProjectDialog({ onSuccess }: CreateProjectDialogProps) {
               name='youtube_url'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>YouTube视频URL</FormLabel>
+                  <FormLabel>YouTube视频URL（可选）</FormLabel>
                   <FormControl>
                     <Input
                       placeholder='https://www.youtube.com/watch?v=xxx 或 /shorts/xxx'

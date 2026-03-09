@@ -223,7 +223,7 @@ async def delete_project(project_id: str):
 
 # ============ 生成接口 ============
 
-async def _call_video_analysis(youtube_url: str, instruction: str = None, system_prompt: str = None) -> dict:
+async def _call_video_analysis(youtube_url: str = None, instruction: str = None, system_prompt: str = None) -> dict:
     """
     调用AI代理的视频分析接口 POST /api/ai/video-analysis
     
@@ -235,7 +235,7 @@ async def _call_video_analysis(youtube_url: str, instruction: str = None, system
         "content": {
             "storyboards": [
                 {"index": 0, "text_to_image": "一个宁静的森林场景，阳光透过树叶洒落...", "image_to_video": "镜头缓缓向前推进，树叶轻轻摇曳..."},
-                {"index": 1, "text_to_image": "城市街道的夜景，霓虹灯闪烁...", "image_to_video": "行人匆匆走过，车流穿梭..."},
+                {"index": 1, "text_to_image": "城市街道的夜景，霓虹灯闪烁...", "image_to_video": "行人匆匆走过,车流穿梭..."},
                 {"index": 2, "text_to_image": "海边日落，金色阳光洒在海面上...", "image_to_video": "海浪轻轻拍打沙滩，海鸥飞过..."},
             ]
         }
