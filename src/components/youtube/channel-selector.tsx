@@ -29,7 +29,7 @@ export const IMAGE_CHANNELS: Array<{
   // },
   {
     value: 'flow2',
-    label: 'Flow2'
+    label: 'Flow'
   },
   {
     value: 'grok',
