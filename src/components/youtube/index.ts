@@ -73,5 +73,6 @@ export { AddStoryboardDialog } from './add-storyboard-dialog';
 export { SwapStoryboardDialog } from './swap-storyboard-dialog';
 export { CopyProjectDialog } from './copy-project-dialog';
 export { AspectRatioSelector } from './aspect-ratio-selector';
+export { ChannelSelector } from './channel-selector';
 export { AddSubjectDialog } from './add-subject-dialog';
 export { FullHistoryDialog } from './full-history-dialog';

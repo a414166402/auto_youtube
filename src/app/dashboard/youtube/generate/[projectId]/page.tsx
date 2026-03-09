@@ -60,6 +60,7 @@ import {
 } from '@/lib/subject-config';
 import { VideoPlayer } from '@/components/youtube/video-player';
 import { AspectRatioSelector } from '@/components/youtube/aspect-ratio-selector';
+import { ChannelSelector } from '@/components/youtube/channel-selector';
 import { ConflictDialog } from '@/components/youtube/conflict-dialog';
 import { useConflictHandler } from '@/hooks/use-conflict-handler';
 import { useTaskPolling } from '@/hooks/use-task-polling';
@@ -72,7 +73,9 @@ import type {
   ProjectResponse,
   GeneratedImage,
   GeneratedVideo,
-  AspectRatio
+  AspectRatio,
+  ImageGenerationChannel,
+  VideoGenerationChannel
 } from '@/types/youtube';
 
 interface GeneratePageProps {
@@ -103,6 +106,12 @@ export default function GeneratePage({ params }: GeneratePageProps) {
   // 图片比例状态
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
   const [savingAspectRatio, setSavingAspectRatio] = useState(false);
+
+  // AI渠道状态
+  const [imageChannel, setImageChannel] =
+    useState<ImageGenerationChannel>('gcp');
+  const [videoChannel, setVideoGenerationChannel] =
+    useState<VideoGenerationChannel>('grok');
 
   // 生成状态 - 使用 Set 支持多个并发生成
   const [generatingImageIndices, setGeneratingImageIndices] = useState<
@@ -384,6 +393,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
           characterImages:
             characterImages.length > 0 ? characterImages : undefined,
           aspectRatio: aspectRatio,
+          aiChannel: imageChannel,
           subjectMappings: Object.fromEntries(
             Object.entries(projectMapping).filter(([, value]) => value !== null)
           ) as Record<string, string>,
@@ -461,6 +471,7 @@ export default function GeneratePage({ params }: GeneratePageProps) {
         selectedImage.url,
         storyboard.image_to_video || '',
         {
+          aiChannel: videoChannel,
           subjectMappings: Object.fromEntries(
             Object.entries(projectMapping).filter(([, value]) => value !== null)
           ) as Record<string, string>,
@@ -1189,6 +1200,14 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                 </p>
               </div>
               <div className='flex items-center gap-2'>
+                <ChannelSelector
+                  type='image'
+                  value={imageChannel}
+                  onChange={(value) =>
+                    setImageChannel(value as ImageGenerationChannel)
+                  }
+                  disabled={generatingImageIndices.size > 0}
+                />
                 <Button
                   size='sm'
                   variant='outline'
@@ -1792,6 +1811,14 @@ export default function GeneratePage({ params }: GeneratePageProps) {
                 </p>
               </div>
               <div className='flex items-center gap-2'>
+                <ChannelSelector
+                  type='video'
+                  value={videoChannel}
+                  onChange={(value) =>
+                    setVideoGenerationChannel(value as VideoGenerationChannel)
+                  }
+                  disabled={generatingVideoIndices.size > 0}
+                />
                 <Button
                   size='sm'
                   variant='outline'

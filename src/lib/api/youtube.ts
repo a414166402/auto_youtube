@@ -40,7 +40,9 @@ import type {
   AddStoryboardResponse,
   SwapStoryboardsRequest,
   SwapStoryboardsResponse,
-  AspectRatio
+  AspectRatio,
+  ImageGenerationChannel,
+  VideoGenerationChannel
 } from '@/types/youtube';
 import { mockYoutubeApi, USE_MOCK_DATA } from './youtube-mock';
 
@@ -382,7 +384,7 @@ export async function createImageTask(
   options: {
     characterImages?: string[];
     aspectRatio?: string;
-    aiChannel?: string;
+    aiChannel?: ImageGenerationChannel;
     subjectMappings?: Record<string, string>;
     refIndexes?: number[];
   } = {}
@@ -400,7 +402,7 @@ export async function createImageTask(
         prompt: prompt,
         character_images: options.characterImages || [],
         aspect_ratio: options.aspectRatio || '9:16',
-        ai_channel: options.aiChannel || 'business',
+        ai_channel: options.aiChannel || 'gcp',
         subject_mappings: options.subjectMappings || {},
         ref_storyboard_indexes: options.refIndexes || []
       }
@@ -434,6 +436,7 @@ export async function createVideoTask(
   imageData: string,
   prompt: string,
   options: {
+    aiChannel?: VideoGenerationChannel;
     subjectMappings?: Record<string, string>;
     sourceImageIndex?: number;
   } = {}
@@ -450,6 +453,7 @@ export async function createVideoTask(
         storyboard_index: storyboardIndex,
         image_data: imageData,
         prompt: prompt,
+        ai_channel: options.aiChannel || 'grok',
         subject_mappings: options.subjectMappings || {},
         source_image_index: options.sourceImageIndex
       }

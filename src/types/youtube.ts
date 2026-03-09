@@ -25,6 +25,15 @@ export type AspectRatio = '9:16' | '16:9';
 // 分镜插入类型（V2新增）
 export type InsertType = 'before' | 'after';
 
+// AI渠道类型
+export type ImageGenerationChannel =
+  | 'gcp'
+  | 'antigravity'
+  | 'flow2'
+  | 'grok'
+  | 'business';
+export type VideoGenerationChannel = 'grok';
+
 // ============ JSONB嵌套数据结构（与后端对齐）============
 
 // 生成的图片
