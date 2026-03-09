@@ -163,7 +163,7 @@ export async function createProject(
   if (USE_MOCK_DATA) {
     const result = await mockYoutubeApi.createProject(
       data.name,
-      data.youtube_url
+      data.youtube_url || ''
     );
     // 转换mock数据格式
     return {
