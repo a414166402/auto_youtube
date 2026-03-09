@@ -343,19 +343,21 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       </div>
 
       {/* YouTube URL */}
-      <div className='bg-muted rounded-lg p-4'>
-        <p className='text-sm'>
-          <span className='font-medium'>YouTube URL: </span>
-          <a
-            href={project.data.youtube_url}
-            target='_blank'
-            rel='noopener noreferrer'
-            className='text-blue-500 hover:underline'
-          >
-            {project.data.youtube_url}
-          </a>
-        </p>
-      </div>
+      {project.data.youtube_url && (
+        <div className='bg-muted rounded-lg p-4'>
+          <p className='text-sm'>
+            <span className='font-medium'>YouTube URL: </span>
+            <a
+              href={project.data.youtube_url}
+              target='_blank'
+              rel='noopener noreferrer'
+              className='text-blue-500 hover:underline'
+            >
+              {project.data.youtube_url}
+            </a>
+          </p>
+        </div>
+      )}
 
       {/* 整体进度条 */}
       <div className='space-y-2'>
